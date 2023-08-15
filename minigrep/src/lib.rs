@@ -17,24 +17,40 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(args: &[String]) -> Result<Config, &'static str> {
+    pub fn new(mut args: std::env::Args) -> Result<Config, &'static str> {
         if args.len() < 3 {
             return Err("not enought arguments..")
         }
-        let query = args[1].clone();
-        let filename = args[2].clone();
+        // 这里使用 clone 的方法会牺牲一点程序性能 可以改造成使用迭代器 这样就可以直接拿到参数所有权
+        // let query = args[1].clone();
+        // let filename = args[2].clone();
+
+        args.next();
+        let query = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a query string"),
+        };
+        let filename = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a filename string"),
+        };        
+
         Ok(Config { query: query, filename: filename })
     }
 }
 
 pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    let mut results = Vec::new();
+    // let mut results = Vec::new();
+    // for line in contents.lines() {
+    //     if line.contains(query) {
+    //         results.push(line);
+    //     }
+    // }
 
-    for line in contents.lines() {
-        if line.contains(query) {
-            results.push(line);
-        }
-    }
+    // 使用迭代器: contents.lines()返回一个迭代器; filter 传入匿名函数得到一个新的迭代器; collect到一个新集合中
+    let results =contents.lines()
+                                    .filter(|line|line.contains(query))
+                                    .collect();
 
     results
 }
