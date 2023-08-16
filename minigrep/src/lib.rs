@@ -30,10 +30,10 @@ impl Config {
             Some(arg) => arg,
             None => return Err("Didn't get a query string"),
         };
-        let filename = match args.next() {
+        let filename = match args.next() {  
             Some(arg) => arg,
             None => return Err("Didn't get a filename string"),
-        };        
+        };
 
         Ok(Config { query: query, filename: filename })
     }
@@ -49,7 +49,7 @@ pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
 
     // 使用迭代器: contents.lines()返回一个迭代器; filter 传入匿名函数得到一个新的迭代器; collect到一个新集合中
     let results =contents.lines()
-                                    .filter(|line|line.contains(query))
+                                    .filter(|line: &&str|line.contains(query))
                                     .collect();
 
     results
