@@ -14,6 +14,7 @@ pub struct App {
     pub show_tables: bool,                    // 新增：是否显示表列表
     pub scroll_offset: usize,    // 新增：跟踪滚动位置
     pub exit: bool,
+    pub current_tab: usize,  // Add this line
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -49,6 +50,7 @@ impl App {
             show_tables: false,
             scroll_offset: 0,     // 初始化滚动位置
             exit: false,
+            current_tab: 0,  // Add this line
         }
     }
 
@@ -194,6 +196,9 @@ impl App {
                         self.scroll_offset = self.selected_chain_index - visible_height + 1;
                     }
                 }
+            }
+            KeyCode::Tab => {
+                self.current_tab = (self.current_tab + 1) % 2;  // Add this handler
             }
             _ => {}
         }
