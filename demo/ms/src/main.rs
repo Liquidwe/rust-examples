@@ -6,10 +6,10 @@ mod ui;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    env_logger::init();  // 初始化日志
+    env_logger::init();
 
     let mut terminal = ratatui::init();
-    let mut app = app::App::new().await;  // 等待异步数据加载完成
+    let mut app = app::App::new().await;
     let app_result = app.run(&mut terminal);
     ratatui::restore();
     app_result
