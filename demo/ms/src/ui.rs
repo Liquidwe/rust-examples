@@ -1,7 +1,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::Stylize,
+    style::{Stylize, Color, Style},
     symbols::border,
     text::{Line, Text},
     widgets::{block::{Position, Title}, Block, List, ListItem, Paragraph, Widget},
@@ -38,13 +38,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     let visible_height = left_chunks[0].height as usize - 2; // 减去边框占用的2行
     let chains_block = Block::bordered()
         .border_set(border::THICK)
-        .title(Title::from(" Chains ").alignment(Alignment::Center))
-        // 将列标题设置为内部标题
-        .title(
-            Title::from(" Name           Status         Time Ago    ")
-                .position(Position::Top)
-                .alignment(Alignment::Center)
-        );
+        .title(Title::from(" Chains ").alignment(Alignment::Center));
 
     let chain_names: Vec<ListItem> = app.chains
         .iter()
@@ -52,12 +46,6 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         .take(visible_height)
         .enumerate()
         .map(|(i, chain)| {
-            let status_style = if chain.status != "Online" {
-                chain.status.as_str().yellow()
-            } else {
-                chain.status.as_str().green()
-            };
-
             let time_ago_style = if chain.time_ago.contains("min") && 
                 chain.time_ago.as_str().trim_end_matches(" min").parse::<u64>().unwrap_or(0) > 10 {
                 chain.time_ago.as_str().yellow()
@@ -68,15 +56,36 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
             let content = if i + app.scroll_offset == app.selected_chain_index {
                 Line::from(vec![
-                    format!("{:<28}", chain.name).bold().green().into(),
-                    format!("{:<20}", status_style.to_string()).bold().into(),
-                    format!("{:<10}", time_ago_style.to_string()).bold().into(),
+                    format!("{:<28}", chain.name).bold().white().into(),
+                    format!("{:<20}", chain.status).bold().into(),
+                    format!("{:<10}", time_ago_style).bold().into(),
                 ])
             } else {
                 Line::from(vec![
-                    format!("{:<28}", chain.name).into(),
-                    format!("{:<20}", status_style).into(),
-                    format!("{:<10}", time_ago_style).into(),
+                    format!("{:<28}", chain.name).bold()
+                        .style(if chain.status == "Online" && chain.time_ago.contains("min") { 
+                            Style::default().fg(Color::Green)
+                        } else if chain.status == "Offline" {
+                            Style::default().fg(Color::Red)
+                        } else { 
+                            Style::default().fg(Color::Yellow) 
+                        }).into(),
+                    format!("{:<20}", chain.status).bold()
+                        .style(if chain.status == "Online" && chain.time_ago.contains("min") { 
+                            Style::default().fg(Color::Green)
+                        } else if chain.status == "Offline" {
+                            Style::default().fg(Color::Red)
+                        } else { 
+                            Style::default().fg(Color::Yellow) 
+                        }).into(),
+                    format!("{:<10}", time_ago_style).bold()
+                        .style(if chain.status == "Online" && chain.time_ago.contains("min") { 
+                            Style::default().fg(Color::Green)
+                        } else if chain.status == "Offline" {
+                            Style::default().fg(Color::Red)
+                        } else { 
+                            Style::default().fg(Color::Yellow) 
+                        }).into(),
                 ])
             };
             ListItem::new(content)
