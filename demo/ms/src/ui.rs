@@ -18,12 +18,19 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     let left_chunks = if app.show_tables {
         Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([
+                Constraint::Percentage(45),  // Reduced to make room for hints
+                Constraint::Percentage(45),
+                Constraint::Percentage(10),  // New space for key hints
+            ])
             .split(chunks[0])
     } else {
         Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(100)])
+            .constraints([
+                Constraint::Percentage(90),  // Reduced to make room for hints
+                Constraint::Percentage(10),  // Space for key hints
+            ])
             .split(chunks[0])
     };
 
@@ -77,6 +84,27 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
             frame.render_widget(table_list, left_chunks[1]);
         }
     }
+
+    // Add key hints at the bottom
+    let hints = vec![
+        "Enter: Select",
+        "PageUp/Down: Navigate",
+        "q: Quit",
+    ];
+    let hints_text = Text::from(hints.join(" | "));
+    let hints_block = Block::bordered()
+        .title(" Controls ")
+        .title_alignment(Alignment::Center)
+        .border_set(border::THICK);
+    let hints_paragraph = Paragraph::new(hints_text)
+        .block(hints_block)
+        .alignment(Alignment::Center);
+    
+    // Render hints in the bottom section
+    frame.render_widget(
+        hints_paragraph,
+        if app.show_tables { left_chunks[2] } else { left_chunks[1] }
+    );
 
     // 右侧显示字段信息
     if let Some(selected_chain) = app.chains.get(app.selected_chain_index) {

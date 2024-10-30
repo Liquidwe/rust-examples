@@ -145,6 +145,35 @@ impl App {
                     self.selected_table_index = None;
                 }
             }
+            KeyCode::PageUp => {
+                if !self.show_tables {
+                    // 向上翻一页
+                    if self.selected_chain_index > visible_height {
+                        self.selected_chain_index -= visible_height;
+                    } else {
+                        self.selected_chain_index = 0;
+                    }
+                    // 更新滚动位置
+                    if self.selected_chain_index < self.scroll_offset {
+                        self.scroll_offset = self.selected_chain_index;
+                    }
+                }
+            }
+            KeyCode::PageDown => {
+                if !self.show_tables {
+                    // 向下翻一页
+                    let new_index = self.selected_chain_index + visible_height;
+                    if new_index < self.chains.len() {
+                        self.selected_chain_index = new_index;
+                    } else {
+                        self.selected_chain_index = self.chains.len() - 1;
+                    }
+                    // 更新滚动位置
+                    if self.selected_chain_index >= self.scroll_offset + visible_height {
+                        self.scroll_offset = self.selected_chain_index - visible_height + 1;
+                    }
+                }
+            }
             _ => {}
         }
     }
