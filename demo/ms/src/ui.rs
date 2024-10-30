@@ -41,7 +41,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         .title(Title::from(" Chains ").alignment(Alignment::Center))
         // 添加列标题作为第二个标题，放在框内
         .title(
-            Title::from(" Name          Status       Time Ago ")
+            Title::from(" Name              Status            Time Ago    ")
                 .position(Position::Top)
                 .alignment(Alignment::Center)
         );
@@ -53,31 +53,36 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         .enumerate()
         .map(|(i, chain)| {
             let status_style = if chain.status != "Online" {
-                format!("{:10}", chain.status).red()
+                chain.status.as_str().yellow()
             } else {
-                format!("{:10}", chain.status).white()
+                chain.status.as_str().green()
             };
 
-            // 计算时间差
             let time_ago = calculate_time_diff(&chain.lastUpdate);
-            let time_ago_style = if time_ago.contains("min") && 
-                time_ago.trim_end_matches(" min").parse::<u64>().unwrap_or(0) > 10 {
-                format!("{:10}", time_ago).yellow()
+            let time_ago_display = if time_ago == "unknown" {
+                "-".to_string()
             } else {
-                format!("{:10}", time_ago).white()
+                time_ago
+            };
+            
+            let time_ago_style = if time_ago_display.contains("min") && 
+                time_ago_display.trim_end_matches(" min").parse::<u64>().unwrap_or(0) > 10 {
+                time_ago_display.yellow()
+            } else {
+                time_ago_display.white()
             };
 
             let content = if i + app.scroll_offset == app.selected_chain_index {
                 Line::from(vec![
-                    format!("{:12}", chain.name).bold().green().into(),
-                    status_style.bold().into(),
-                    time_ago_style.bold().into(),
+                    format!("{:28}", chain.name).bold().green().into(),
+                    format!("{:18}", status_style).bold().into(),
+                    format!("{:12}", time_ago_style).bold().into(),
                 ])
             } else {
                 Line::from(vec![
-                    format!("{:12}", chain.name).into(),
-                    status_style.into(),
-                    time_ago_style.into(),
+                    format!("{:28}", chain.name).into(),
+                    format!("{:18}", status_style).into(),
+                    format!("{:12}", time_ago_style).into(),
                 ])
             };
             ListItem::new(content)
