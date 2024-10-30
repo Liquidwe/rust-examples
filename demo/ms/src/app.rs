@@ -20,8 +20,9 @@ pub struct App {
 pub struct Chain {
     pub name: String,
     pub status: String,
-    pub lastUpdate: String,  // 这里假设是ISO格式的时间字符串
-    pub dataDictionary: HashMap<String, Vec<DataDictionaryItem>>,  // 修改：使用 HashMap 存储表和字段
+    pub lastUpdate: String,
+    pub time_ago: String,  // 新增字段存储计算好的时间差
+    pub dataDictionary: HashMap<String, Vec<DataDictionaryItem>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -53,23 +54,23 @@ impl App {
 
     async fn fetch_chains() -> Result<Vec<Chain>, reqwest::Error> {
         let url = "https://api.chainbase.com/api/v1/metadata/network_chains";
-        println!("Sending request to {}", url);
 
         match reqwest::get(url).await?.json::<Response>().await {
             Ok(response) => {
-                println!("Parsed response successfully, received {} chains", response.graphData.len());
                 Ok(response.graphData.into_iter()
                     .map(|graph_data| {
                         let mut tables = HashMap::new();
-                        // 将不同的表数据添加到 HashMap 中
                         tables.insert("blocks".to_string(), graph_data.chain.dataDictionary.blocks);
                         tables.insert("transactions".to_string(), graph_data.chain.dataDictionary.transactions);
                         tables.insert("transactionLogs".to_string(), graph_data.chain.dataDictionary.transactionLogs);
+                        
+                        let time_ago = Self::calculate_time_diff(&graph_data.chain.lastUpdate);
                         
                         Chain {
                             name: graph_data.chain.name,
                             status: graph_data.chain.status,
                             lastUpdate: graph_data.chain.lastUpdate,
+                            time_ago,
                             dataDictionary: tables,
                         }
                     })
@@ -82,6 +83,22 @@ impl App {
         }
     }
 
+    fn calculate_time_diff(time_str: &str) -> String {
+        if let Ok(time) = chrono::DateTime::parse_from_rfc3339(time_str) {
+            let now = chrono::Utc::now();
+            let duration = now.signed_duration_since(time);
+            
+            if duration.num_hours() > 24 {
+                format!("{} days", duration.num_days())
+            } else if duration.num_hours() > 0 {
+                format!("{} hrs", duration.num_hours())
+            } else {
+                format!("{} min", duration.num_minutes())
+            }
+        } else {
+            "unknown".to_string()
+        }
+    }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {

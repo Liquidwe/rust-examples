@@ -39,9 +39,9 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     let chains_block = Block::bordered()
         .border_set(border::THICK)
         .title(Title::from(" Chains ").alignment(Alignment::Center))
-        // 添加列标题作为第二个标题，放在框内
+        // 将列标题设置为内部标题
         .title(
-            Title::from(" Name              Status            Time Ago    ")
+            Title::from(" Name           Status         Time Ago    ")
                 .position(Position::Top)
                 .alignment(Alignment::Center)
         );
@@ -58,31 +58,25 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                 chain.status.as_str().green()
             };
 
-            let time_ago = calculate_time_diff(&chain.lastUpdate);
-            let time_ago_display = if time_ago == "unknown" {
-                "-".to_string()
+            let time_ago_style = if chain.time_ago.contains("min") && 
+                chain.time_ago.as_str().trim_end_matches(" min").parse::<u64>().unwrap_or(0) > 10 {
+                chain.time_ago.as_str().yellow()
             } else {
-                time_ago
-            };
-            
-            let time_ago_style = if time_ago_display.contains("min") && 
-                time_ago_display.trim_end_matches(" min").parse::<u64>().unwrap_or(0) > 10 {
-                time_ago_display.yellow()
-            } else {
-                time_ago_display.white()
+                let display_time = if chain.time_ago == "unknown" { "-" } else { &chain.time_ago };
+                display_time.white()
             };
 
             let content = if i + app.scroll_offset == app.selected_chain_index {
                 Line::from(vec![
-                    format!("{:28}", chain.name).bold().green().into(),
-                    format!("{:18}", status_style).bold().into(),
-                    format!("{:12}", time_ago_style).bold().into(),
+                    format!("{:<28}", chain.name).bold().green().into(),
+                    format!("{:<20}", status_style.to_string()).bold().into(),
+                    format!("{:<10}", time_ago_style.to_string()).bold().into(),
                 ])
             } else {
                 Line::from(vec![
-                    format!("{:28}", chain.name).into(),
-                    format!("{:18}", status_style).into(),
-                    format!("{:12}", time_ago_style).into(),
+                    format!("{:<28}", chain.name).into(),
+                    format!("{:<20}", status_style).into(),
+                    format!("{:<10}", time_ago_style).into(),
                 ])
             };
             ListItem::new(content)
@@ -173,24 +167,5 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
             .block(right_block)
             .wrap(ratatui::widgets::Wrap { trim: true });
         frame.render_widget(data_paragraph, chunks[1]);
-    }
-}
-
-// 添加新的辅助函数来计算时间差
-fn calculate_time_diff(time_str: &str) -> String {
-    // 这里假设 time_str 是一个 ISO 格式的时间字符串
-    if let Ok(time) = chrono::DateTime::parse_from_rfc3339(time_str) {
-        let now = chrono::Utc::now();
-        let duration = now.signed_duration_since(time);
-        
-        if duration.num_hours() > 24 {
-            format!("{} days", duration.num_days())
-        } else if duration.num_hours() > 0 {
-            format!("{} hrs", duration.num_hours())
-        } else {
-            format!("{} min", duration.num_minutes())
-        }
-    } else {
-        "unknown".to_string()
     }
 }
