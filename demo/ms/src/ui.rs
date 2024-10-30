@@ -36,6 +36,16 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
     // 渲染链列表
     let visible_height = left_chunks[0].height as usize - 2; // 减去边框占用的2行
+    let chains_block = Block::bordered()
+        .border_set(border::THICK)
+        .title(Title::from(" Chains ").alignment(Alignment::Center))
+        // 添加列标题作为第二个标题，放在框内
+        .title(
+            Title::from(" Name          Status       Time Ago ")
+                .position(Position::Top)
+                .alignment(Alignment::Center)
+        );
+
     let chain_names: Vec<ListItem> = app.chains
         .iter()
         .skip(app.scroll_offset)
@@ -43,43 +53,36 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         .enumerate()
         .map(|(i, chain)| {
             let status_style = if chain.status != "Online" {
-                chain.status.clone().red()
+                format!("{:10}", chain.status).red()
             } else {
-                chain.status.clone().white()
+                format!("{:10}", chain.status).white()
             };
 
-            // 解析和检查最后更新时间
-            let last_update_style = if should_highlight_time(&chain.lastUpdate) {
-                chain.lastUpdate.clone().yellow()
+            // 计算时间差
+            let time_ago = calculate_time_diff(&chain.lastUpdate);
+            let time_ago_style = if time_ago.contains("min") && 
+                time_ago.trim_end_matches(" min").parse::<u64>().unwrap_or(0) > 10 {
+                format!("{:10}", time_ago).yellow()
             } else {
-                chain.lastUpdate.clone().white()
+                format!("{:10}", time_ago).white()
             };
 
             let content = if i + app.scroll_offset == app.selected_chain_index {
                 Line::from(vec![
-                    chain.name.clone().bold().green().into(),
-                    "  ".into(),
+                    format!("{:12}", chain.name).bold().green().into(),
                     status_style.bold().into(),
-                    "  ".into(),
-                    last_update_style.bold().into(),
+                    time_ago_style.bold().into(),
                 ])
             } else {
                 Line::from(vec![
-                    chain.name.clone().into(),
-                    "  ".into(),
+                    format!("{:12}", chain.name).into(),
                     status_style.into(),
-                    "  ".into(),
-                    last_update_style.into(),
+                    time_ago_style.into(),
                 ])
             };
             ListItem::new(content)
         })
         .collect();
-
-    let chains_block = Block::bordered()
-        .title(" Chain     Status    Last Update ")  // 更新标题以对齐列
-        .title_alignment(Alignment::Center)
-        .border_set(border::THICK);
 
     let chain_list = List::new(chain_names).block(chains_block);
     frame.render_widget(chain_list, left_chunks[0]);
@@ -168,13 +171,21 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     }
 }
 
-// 添加这个辅助函数来检查时间是否超过10分钟
-fn should_highlight_time(time_str: &str) -> bool {
-    // 这里需要根据实际的时间格式来实现解析逻辑
-    // 示例实现，假设时间格式为"XM"，其中X是分钟数
-    if let Some(minutes) = time_str.trim_end_matches('M').parse::<u64>().ok() {
-        minutes > 10
+// 添加新的辅助函数来计算时间差
+fn calculate_time_diff(time_str: &str) -> String {
+    // 这里假设 time_str 是一个 ISO 格式的时间字符串
+    if let Ok(time) = chrono::DateTime::parse_from_rfc3339(time_str) {
+        let now = chrono::Utc::now();
+        let duration = now.signed_duration_since(time);
+        
+        if duration.num_hours() > 24 {
+            format!("{} days", duration.num_days())
+        } else if duration.num_hours() > 0 {
+            format!("{} hrs", duration.num_hours())
+        } else {
+            format!("{} min", duration.num_minutes())
+        }
     } else {
-        false
+        "unknown".to_string()
     }
 }
