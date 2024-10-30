@@ -19,6 +19,8 @@ pub struct App {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Chain {
     pub name: String,
+    pub status: String,
+    pub lastUpdate: String,  // 这里假设是ISO格式的时间字符串
     pub dataDictionary: HashMap<String, Vec<DataDictionaryItem>>,  // 修改：使用 HashMap 存储表和字段
 }
 
@@ -66,6 +68,8 @@ impl App {
                         
                         Chain {
                             name: graph_data.chain.name,
+                            status: graph_data.chain.status,
+                            lastUpdate: graph_data.chain.lastUpdate,
                             dataDictionary: tables,
                         }
                     })
@@ -192,6 +196,8 @@ struct GraphData {
 #[derive(Debug, Deserialize)]
 struct ChainData {
     name: String,
+    status: String,
+    lastUpdate: String,
     dataDictionary: DataDictionary,
 }
 

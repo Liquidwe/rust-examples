@@ -42,17 +42,42 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         .take(visible_height)
         .enumerate()
         .map(|(i, chain)| {
-            let content = if i + app.scroll_offset == app.selected_chain_index {
-                Line::from(chain.name.clone().bold().green())
+            let status_style = if chain.status != "Online" {
+                chain.status.clone().red()
             } else {
-                Line::from(chain.name.clone())
+                chain.status.clone().white()
+            };
+
+            // 解析和检查最后更新时间
+            let last_update_style = if should_highlight_time(&chain.lastUpdate) {
+                chain.lastUpdate.clone().yellow()
+            } else {
+                chain.lastUpdate.clone().white()
+            };
+
+            let content = if i + app.scroll_offset == app.selected_chain_index {
+                Line::from(vec![
+                    chain.name.clone().bold().green().into(),
+                    "  ".into(),
+                    status_style.bold().into(),
+                    "  ".into(),
+                    last_update_style.bold().into(),
+                ])
+            } else {
+                Line::from(vec![
+                    chain.name.clone().into(),
+                    "  ".into(),
+                    status_style.into(),
+                    "  ".into(),
+                    last_update_style.into(),
+                ])
             };
             ListItem::new(content)
         })
         .collect();
 
     let chains_block = Block::bordered()
-        .title(" Chains ")
+        .title(" Chain     Status    Last Update ")  // 更新标题以对齐列
         .title_alignment(Alignment::Center)
         .border_set(border::THICK);
 
@@ -140,5 +165,16 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
             .block(right_block)
             .wrap(ratatui::widgets::Wrap { trim: true });
         frame.render_widget(data_paragraph, chunks[1]);
+    }
+}
+
+// 添加这个辅助函数来检查时间是否超过10分钟
+fn should_highlight_time(time_str: &str) -> bool {
+    // 这里需要根据实际的时间格式来实现解析逻辑
+    // 示例实现，假设时间格式为"XM"，其中X是分钟数
+    if let Some(minutes) = time_str.trim_end_matches('M').parse::<u64>().ok() {
+        minutes > 10
+    } else {
+        false
     }
 }
