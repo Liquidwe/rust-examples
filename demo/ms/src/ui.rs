@@ -46,6 +46,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         .take(visible_height)
         .enumerate()
         .map(|(i, chain)| {
+            let index = i + app.scroll_offset + 1; // Calculate the 1-based index
             let time_ago_style = if chain.time_ago.contains("min") && 
                 chain.time_ago.as_str().trim_end_matches(" min").parse::<u64>().unwrap_or(0) > 10 {
                 chain.time_ago.as_str().yellow()
@@ -56,13 +57,13 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
             let content = if i + app.scroll_offset == app.selected_chain_index {
                 Line::from(vec![
-                    format!("{:<28}", chain.name).bold().white().into(),
+                    format!("{:<3} {:<25}", index, chain.name).bold().white().into(),
                     format!("{:<20}", chain.status).bold().into(),
                     format!("{:<10}", time_ago_style).bold().into(),
                 ])
             } else {
                 Line::from(vec![
-                    format!("{:<28}", chain.name).bold()
+                    format!("{:<3}. {:<25}", index, chain.name).bold()
                         .style(if chain.status == "Online" && chain.time_ago.contains("min") { 
                             Style::default().fg(Color::Green)
                         } else if chain.status == "Offline" {
