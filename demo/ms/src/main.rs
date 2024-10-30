@@ -4,11 +4,13 @@ use ratatui::DefaultTerminal;
 mod app;
 mod ui;
 
-use crate::app::App;
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    env_logger::init();  // 初始化日志
 
-fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
-    let app_result = App::default().run(&mut terminal);
+    let mut app = app::App::new().await;  // 等待异步数据加载完成
+    let app_result = app.run(&mut terminal);
     ratatui::restore();
     app_result
 }
