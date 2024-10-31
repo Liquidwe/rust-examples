@@ -171,46 +171,67 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
             // 右侧显示字段信息
             if let Some(selected_chain) = app.chains.get(app.selected_chain_index) {
                 let mut data_lines = if app.show_tables && app.selected_table_index.is_some() {
-                    // 获取选中的表名
                     let table_name = selected_chain.dataDictionary
                         .keys()
                         .nth(app.selected_table_index.unwrap())
                         .map(|s| s.as_str())
                         .unwrap_or("");
 
-                    // 获取选中表的字段信息
                     let fields = selected_chain.dataDictionary.get(table_name);
                     
                     let mut lines = Vec::new();
                     
-                    // Add field descriptions
+                    // Add header
+                    lines.push(Line::from(vec![
+                        "Field Name".bold().white(),
+                        " | ".into(),
+                        "Data Type".bold().white(),
+                        " | ".into(),
+                        "Description".bold().white(),
+                    ]));
+                    lines.push(Line::from("─".repeat(80)));  // Separator line
+
+                    // Add field descriptions in table format
                     if let Some(fields) = fields {
                         lines.extend(fields.iter().map(|item| {
-                            Line::from(format!(
-                                "{}: {} - {}",
-                                item.name, item.dataType, item.description
-                            ))
+                            Line::from(vec![
+                                format!("{:<20}", item.name).yellow().into(),
+                                " | ".into(),
+                                format!("{:<15}", item.dataType).cyan().into(),
+                                " | ".into(),
+                                item.description.clone().white().into(),
+                            ])
                         }));
                     }
 
                     // Add example data if available
                     if let Some(example_data) = &app.example_data {
                         lines.push(Line::from(""));
-                        lines.push(Line::from("Example Data:".bold()));
+                        lines.push(Line::from("Example Data:".bold().yellow()));
                         
-                        // Add column headers
-                        lines.push(Line::from(example_data.columns.iter()
-                            .map(|col| format!("{} ({})", col.name, col.type_))
-                            .collect::<Vec<_>>()
-                            .join(" | ")));
+                        // Add header
+                        lines.push(Line::from(vec![
+                            "Column Name".bold().white(),
+                            " | ".into(),
+                            "Value".bold().white(),
+                        ]));
+                        lines.push(Line::from("─".repeat(80)));  // Separator line
 
-                        // Add sample rows
-                        for row in example_data.data.iter().take(5) {  // Show first 5 rows
-                            lines.push(Line::from(row.iter()
-                                .map(|val| val.to_string())
-                                .collect::<Vec<_>>()
-                                .join(" | ")));
+                        // Show first row of data as example
+                        if let Some(first_row) = example_data.data.first() {
+                            for (i, value) in first_row.iter().enumerate() {
+                                if let Some(column) = example_data.columns.get(i) {
+                                    lines.push(Line::from(vec![
+                                        format!("{:<30}", column.name).yellow().into(),
+                                        " | ".into(),
+                                        value.to_string().white().into(),
+                                    ]));
+                                }
+                            }
                         }
+                    } else if selected_chain.status == "Offline" {
+                        lines.push(Line::from(""));
+                        lines.push(Line::from("No data available - Chain is currently offline".red().bold()));
                     }
 
                     lines

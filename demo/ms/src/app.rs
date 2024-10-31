@@ -123,16 +123,49 @@ impl App {
                 Column { name: "block_number".to_string(), type_: "bigint".to_string() },
                 Column { name: "hash".to_string(), type_: "varchar(66)".to_string() },
                 Column { name: "parent_hash".to_string(), type_: "varchar(66)".to_string() },
-                // Add more columns as needed
+                Column { name: "nonce".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "sha3_uncles".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "logs_bloom".to_string(), type_: "varchar".to_string() },
+                Column { name: "transactions_root".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "state_root".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "receipts_root".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "miner".to_string(), type_: "varchar(42)".to_string() },
+                Column { name: "difficulty".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "total_difficulty".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "size".to_string(), type_: "bigint".to_string() },
+                Column { name: "extra_data".to_string(), type_: "varchar".to_string() },
+                Column { name: "gas_limit".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "gas_used".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "block_timestamp".to_string(), type_: "timestamp".to_string() },
+                Column { name: "transaction_count".to_string(), type_: "bigint".to_string() },
+                Column { name: "base_fee_per_gas".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "withdrawals_root".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "__pk".to_string(), type_: "integer".to_string() },
             ],
             data: vec![
                 vec![
                     json!(0),
                     json!("0x81005434635456a16f74ff7023fbe0bf423abbc8a8deb093ffff455c0ad3b741"),
                     json!("0x0000000000000000000000000000000000000000000000000000000000000000"),
-                    // Add more field values
+                    json!("0x0000000000000000"),
+                    json!("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"),
+                    json!("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+                    json!("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                    json!("0x3f86b09b43e3e49a41fc20a07579b79eba044253367817d5c241d23c0e2bc5c9"),
+                    json!("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                    json!("0x0000000000000000000000000000000000000000"),
+                    json!("0"),
+                    json!("0"),
+                    json!(505),
+                    json!("0x"),
+                    json!("0"),
+                    json!("0"),
+                    json!("2023-03-24 10:19:23.000"),
+                    json!(0),
+                    json!(null),
+                    json!(null),
+                    json!(0)
                 ],
-                // Add more rows as needed
             ],
         }
     }
@@ -141,18 +174,33 @@ impl App {
         ExampleData {
             columns: vec![
                 Column { name: "block_number".to_string(), type_: "bigint".to_string() },
-                Column { name: "hash".to_string(), type_: "varchar(66)".to_string() },
-                Column { name: "parent_hash".to_string(), type_: "varchar(66)".to_string() },
-                // Add more columns as needed
+                Column { name: "block_timestamp".to_string(), type_: "timestamp".to_string() },
+                Column { name: "transaction_hash".to_string(), type_: "varchar".to_string() },
+                Column { name: "transaction_index".to_string(), type_: "integer".to_string() },
+                Column { name: "log_index".to_string(), type_: "integer".to_string() },
+                Column { name: "address".to_string(), type_: "varchar".to_string() },
+                Column { name: "data".to_string(), type_: "varbinary".to_string() },
+                Column { name: "topic0".to_string(), type_: "varchar".to_string() },
+                Column { name: "topic1".to_string(), type_: "varchar".to_string() },
+                Column { name: "topic2".to_string(), type_: "varchar".to_string() },
+                Column { name: "topic3".to_string(), type_: "varchar".to_string() },
+                Column { name: "pk".to_string(), type_: "integer".to_string() },
             ],
             data: vec![
                 vec![
+                    json!(1),
+                    json!("2023-03-24 17:30:15.000"),
+                    json!("0x1b1cc77d663d9176b791e94124eecffe49d1c69837ee6e9ed09356f2c70a065d"),
                     json!(0),
-                    json!("0x81005434635456a16f74ff7023fbe0bf423abbc8a8deb093ffff455c0ad3b741"),
-                    json!("0x0000000000000000000000000000000000000000000000000000000000000000"),
-                    // Add more field values
+                    json!(0),
+                    json!("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+                    json!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHboRMQAGZLiEobojhGQVmJIlLToAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABY0V4XYoAAA=="),
+                    json!("0x25308c93ceeed162da955b3f7ce3e3f93606579e40fb92029faa9efe27545983"),
+                    json!(""),
+                    json!(""),
+                    json!(""),
+                    json!(0)
                 ],
-                // Add more rows as needed
             ],
         }
     }
@@ -160,19 +208,54 @@ impl App {
     fn mock_transactions_data() -> ExampleData {
         ExampleData {
             columns: vec![
-                Column { name: "block_number".to_string(), type_: "bigint".to_string() },
                 Column { name: "hash".to_string(), type_: "varchar(66)".to_string() },
-                Column { name: "parent_hash".to_string(), type_: "varchar(66)".to_string() },
-                // Add more columns as needed
+                Column { name: "nonce".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "transaction_index".to_string(), type_: "integer".to_string() },
+                Column { name: "from_address".to_string(), type_: "varchar(42)".to_string() },
+                Column { name: "to_address".to_string(), type_: "varchar(42)".to_string() },
+                Column { name: "value".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "gas".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "gas_price".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "method_id".to_string(), type_: "varchar(10)".to_string() },
+                Column { name: "input".to_string(), type_: "varbinary".to_string() },
+                Column { name: "block_timestamp".to_string(), type_: "timestamp".to_string() },
+                Column { name: "block_number".to_string(), type_: "bigint".to_string() },
+                Column { name: "block_hash".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "max_fee_per_gas".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "max_priority_fee_per_gas".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "transaction_type".to_string(), type_: "integer".to_string() },
+                Column { name: "receipt_cumulative_gas_used".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "receipt_gas_used".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "receipt_contract_address".to_string(), type_: "varchar(42)".to_string() },
+                Column { name: "receipt_status".to_string(), type_: "integer".to_string() },
+                Column { name: "receipt_effective_gas_price".to_string(), type_: "varchar(78)".to_string() },
+                Column { name: "__pk".to_string(), type_: "integer".to_string() },
             ],
             data: vec![
                 vec![
-                    json!(0),
                     json!("0x81005434635456a16f74ff7023fbe0bf423abbc8a8deb093ffff455c0ad3b741"),
+                    json!("0x0"),
+                    json!(0),
+                    json!("0x742d35Cc6634C0532925a3b844Bc454e4438f44e"),
+                    json!("0x1234567890123456789012345678901234567890"),
+                    json!("1000000000000000000"),
+                    json!("21000"),
+                    json!("20000000000"),
+                    json!("0x"),
+                    json!("0x"),
+                    json!("2023-10-31 03:52:35.000"),
+                    json!(12345678),
                     json!("0x0000000000000000000000000000000000000000000000000000000000000000"),
-                    // Add more field values
+                    json!("30000000000"),
+                    json!("2000000000"),
+                    json!(2),
+                    json!("21000"),
+                    json!("21000"),
+                    json!(null),
+                    json!(1),
+                    json!("20000000000"),
+                    json!(0),
                 ],
-                // Add more rows as needed
             ],
         }
     }
@@ -200,6 +283,12 @@ impl App {
 
     pub fn update_example_data(&mut self) {
         if let Some(selected_chain) = self.chains.get(self.selected_chain_index) {
+            // Check if chain is offline
+            if selected_chain.status == "Offline" {
+                self.example_data = None;
+                return;
+            }
+
             if let Some(table_index) = self.selected_table_index {
                 let table_name = selected_chain.dataDictionary
                     .keys()
