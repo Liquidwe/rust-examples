@@ -330,7 +330,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     // Create text spans with different colors
     let text = vec![
         Span::styled(
-            "Chainbase Network [v1.1.0] ",
+            "Chainbase Network [TestNet] [v1.1.0] ",
             Style::default().bold()
         ),
         Span::styled(
@@ -345,9 +345,9 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     frame.render_widget(
         chainbase_text,
         Rect::new(
-            frame.size().width - 42, // Increased width to accommodate animation
+            frame.size().width - 45, // Increased width to accommodate animation
             1,                       // Top of screen
-            40,                      // Increased width for blocks
+            43,                      // Increased width for blocks
             1,                       // Height of text
         ),
     );
