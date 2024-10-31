@@ -3,12 +3,14 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Stylize, Color, Style},
     symbols::border,
-    text::{Line, Text},
+    text::{Line, Text, Span},
     widgets::{block::{Position, Title}, Block, List, ListItem, Paragraph, Widget, Tabs},
 };
 use crate::app::App;
 
 pub fn draw(frame: &mut ratatui::Frame, app: &App) {
+
+
     // Create tabs
     let titles = vec!["NETWORK [1]", "MANUSCRIPTS [2]"];
     let tabs = Tabs::new(titles)
@@ -236,4 +238,40 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         }
         _ => unreachable!(),
     }
+
+    // Add Chainbase text to top-right corner LAST (after all other rendering)
+    // Calculate how many blocks to show based on time
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();  // Get current time in milliseconds
+    let num_blocks = ((now / 1500) % 5 + 1) as usize;  // Cycle every 1.5 seconds (1500ms)
+    
+    // Create the loading animation string
+    let blocks: String = "▊".repeat(num_blocks) + &" ".repeat(5 - num_blocks);
+    
+    // Create text spans with different colors
+    let text = vec![
+        Span::styled(
+            "Manuscript GUI [v1.1.0] ",
+            Style::default().bold()
+        ),
+        Span::styled(
+            blocks,
+            Style::default().fg(ratatui::style::Color::Green)
+        )
+    ];
+    
+    let chainbase_text = Paragraph::new(Line::from(text))
+        .alignment(Alignment::Right);
+        
+    frame.render_widget(
+        chainbase_text,
+        Rect::new(
+            frame.size().width - 42, // Increased width to accommodate animation
+            1,                       // Top of screen
+            40,                      // Increased width for blocks
+            1,                       // Height of text
+        ),
+    );
 }

@@ -1,4 +1,4 @@
-use std::{io, collections::HashMap};
+use std::{io, collections::HashMap, time::Duration};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::DefaultTerminal;
 use serde::{Deserialize, Serialize};
@@ -179,16 +179,21 @@ impl App {
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {
-            let visible_height = terminal.size()?.height as usize - 2; // 减去边框等装饰元素的高度
+            let visible_height = terminal.size()?.height as usize - 2;
+            
+            // Draw the UI
             terminal.draw(|frame| ui::draw(frame, self))?;
             
-            // 处理事件时传入可见高度
-            match event::read()? {
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    self.handle_key_event(key_event, visible_height)
+            // Wait for event with timeout (100ms)
+            if event::poll(Duration::from_millis(1000))? {
+                // Handle events if any
+                if let Event::Key(key_event) = event::read()? {
+                    if key_event.kind == KeyEventKind::Press {
+                        self.handle_key_event(key_event, visible_height);
+                    }
                 }
-                _ => {}
-            };
+            }
+            // If no event, the timeout will trigger a redraw anyway
         }
         Ok(())
     }
