@@ -168,7 +168,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                 if app.show_tables { left_chunks[2] } else { left_chunks[1] }
             );
 
-            // 右侧显示字段信息
+            // 右侧显示字��
             if let Some(selected_chain) = app.chains.get(app.selected_chain_index) {
                 let mut data_lines = if app.show_tables && app.selected_table_index.is_some() {
                     let table_name = selected_chain.dataDictionary
@@ -355,11 +355,11 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     if app.show_sql_window {
         // Create a floating SQL input window
         let area = frame.size();
-        let sql_window_width = (area.width as f32 * 0.8) as u16;  // 80% of screen width
-        let sql_window_height = (area.height as f32 * 0.4) as u16; // 40% of screen height
+        let sql_window_width = (area.width as f32 * 0.8) as u16;
+        let sql_window_height = (area.height as f32 * 0.4) as u16;
         let sql_window = Rect::new(
-            (area.width - sql_window_width) / 2,  // Center horizontally
-            (area.height - sql_window_height) / 2, // Center vertically
+            (area.width - sql_window_width) / 2,
+            (area.height - sql_window_height) / 2,
             sql_window_width,
             sql_window_height,
         );
@@ -367,9 +367,9 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
         // Clear the area under the SQL window
         frame.render_widget(Clear, sql_window);
 
-        // Render SQL input area
+        // Create input block
         let input_block = Block::bordered()
-            .title(" SQL Editor (Enter to Save) ")
+            .title(" SQL Editor (Ctrl+Enter to Execute) ")
             .title_alignment(Alignment::Center)
             .border_set(border::THICK)
             .title_style(Style::default()
@@ -377,10 +377,82 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                 .bold()
                 .add_modifier(Modifier::UNDERLINED | Modifier::ITALIC));
 
-        let sql_paragraph = Paragraph::new(app.sql_input.as_str())
+        // Convert the SQL input into styled text with cursor
+        let mut styled_text = Text::default();
+        let input = app.sql_input.as_str();
+        
+        // Split input into lines and process each line
+        let lines: Vec<&str> = input.split('\n').collect();
+        let mut current_pos = 0;
+        
+        for (line_idx, line) in lines.iter().enumerate() {
+            let line_length = line.len() + 1; // +1 for the newline character
+            let cursor_in_this_line = app.sql_cursor_position >= current_pos 
+                && app.sql_cursor_position < current_pos + line_length;
+            
+            if cursor_in_this_line {
+                // Calculate cursor position within this line
+                let line_cursor_pos = app.sql_cursor_position - current_pos;
+                
+                // Split the line at cursor position
+                let (before_cursor, after_cursor) = line.split_at(line_cursor_pos);
+                
+                let mut spans = Vec::new();
+                spans.push(Span::raw(before_cursor));
+                
+                // Add cursor
+                if after_cursor.chars().next().is_some() {
+                    // If there's a character at cursor position, highlight it
+                    let next_char = &after_cursor[..1];
+                    spans.push(Span::styled(
+                        next_char,
+                        Style::default().bg(Color::White).fg(Color::Black)
+                    ));
+                    spans.push(Span::raw(&after_cursor[1..]));
+                } else {
+                    // If cursor is at the end of line, show a block cursor
+                    spans.push(Span::styled(
+                        " ",
+                        Style::default().bg(Color::White)
+                    ));
+                }
+                
+                styled_text.extend(Text::from(Line::from(spans)));
+            } else {
+                // Regular line without cursor
+                styled_text.extend(Text::from(Line::from(line.to_string())));
+            }
+            
+            // Add newline if this isn't the last line
+            if line_idx < lines.len() - 1 {
+                styled_text.extend(Text::from("\n"));
+            }
+            
+            current_pos += line_length;
+        }
+
+        // Render SQL input with cursor
+        let sql_paragraph = Paragraph::new(styled_text)
             .block(input_block)
             .style(Style::default().fg(Color::White));
 
         frame.render_widget(sql_paragraph, sql_window);
+
+        // If there's a SQL result, show it below the input
+        if let Some(result) = &app.sql_result {
+            let result_text = Paragraph::new(result.as_str())
+                .style(Style::default().fg(Color::Green));
+            
+            // Calculate result window position below SQL input
+            let result_window = Rect::new(
+                sql_window.x,
+                sql_window.y + sql_window.height,
+                sql_window.width,
+                3, // Height for result display
+            );
+            
+            frame.render_widget(Clear, result_window);
+            frame.render_widget(result_text, result_window);
+        }
     }
 }

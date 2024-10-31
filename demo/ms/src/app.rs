@@ -331,7 +331,8 @@ impl App {
                             }
                         });
                     } else {
-                        self.sql_input.push('\n');
+                        // Insert newline at cursor position
+                        self.sql_input.insert(self.sql_cursor_position, '\n');
                         self.sql_cursor_position += 1;
                     }
                 }
@@ -353,6 +354,50 @@ impl App {
                 KeyCode::Right => {
                     if self.sql_cursor_position < self.sql_input.len() {
                         self.sql_cursor_position += 1;
+                    }
+                }
+                KeyCode::Up => {
+                    // Find the previous newline before cursor
+                    let before_cursor = &self.sql_input[..self.sql_cursor_position];
+                    if let Some(current_line_start) = before_cursor.rfind('\n') {
+                        // Get the previous line's start
+                        if let Some(prev_line_start) = before_cursor[..current_line_start].rfind('\n') {
+                            let current_col = self.sql_cursor_position - current_line_start - 1;
+                            let prev_line_length = current_line_start - prev_line_start - 1;
+                            let new_col = current_col.min(prev_line_length);
+                            self.sql_cursor_position = prev_line_start + 1 + new_col;
+                        } else {
+                            // Move to the first line
+                            let current_col = self.sql_cursor_position - current_line_start - 1;
+                            let first_line_length = current_line_start;
+                            let new_col = current_col.min(first_line_length);
+                            self.sql_cursor_position = new_col;
+                        }
+                    }
+                }
+                KeyCode::Down => {
+                    // Find the next newline after cursor
+                    if let Some(current_line_end) = self.sql_input[self.sql_cursor_position..].find('\n') {
+                        let current_line_end = current_line_end + self.sql_cursor_position;
+                        // Find the current line start to calculate column position
+                        let before_cursor = &self.sql_input[..self.sql_cursor_position];
+                        let current_line_start = before_cursor.rfind('\n')
+                            .map(|pos| pos + 1)
+                            .unwrap_or(0);
+                        let current_col = self.sql_cursor_position - current_line_start;
+
+                        // Find the next line's end
+                        if let Some(next_line_end) = self.sql_input[current_line_end + 1..].find('\n') {
+                            let next_line_end = next_line_end + current_line_end + 1;
+                            let next_line_length = next_line_end - (current_line_end + 1);
+                            let new_col = current_col.min(next_line_length);
+                            self.sql_cursor_position = current_line_end + 1 + new_col;
+                        } else {
+                            // Move to the last line
+                            let next_line_length = self.sql_input.len() - (current_line_end + 1);
+                            let new_col = current_col.min(next_line_length);
+                            self.sql_cursor_position = current_line_end + 1 + new_col;
+                        }
                     }
                 }
                 _ => {}
