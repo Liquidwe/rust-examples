@@ -236,7 +236,55 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
                     lines
                 } else {
-                    vec![Line::from("Select a table to view fields")]
+                    const LOGO: &str = "
+ ██████╗██╗  ██╗ █████╗ ██╗███╗   ██╗██████╗  █████╗ ███████╗███████╗
+██╔════╝██║  ██║██╔══██╗██║████╗  ██║██╔══██╗██╔══██╗██╔════╝██╔════╝
+██║     ███████║███████║██║██╔██╗ ██║██████╔╝███████║███████╗█████╗  
+██║     ██╔══██║██╔══██║██║██║╚██╗██║██╔══██╗██╔══██║╚════██║██╔══╝  
+╚██████╗██║  ██║██║  ██║██║██║ ╚████║██████╔╝██║  ██║███████║███████╗
+ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝";
+
+                    let layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([
+                            Constraint::Percentage(20),
+                            Constraint::Length(
+                                TryInto::<u16>::try_into(LOGO.lines().count())
+                                    .unwrap_or_default()
+                                    .saturating_add(2),
+                            ),
+                            Constraint::Length(3),
+                            Constraint::Fill(1),
+                        ])
+                        .split(chunks[1]);  // Use the right panel area
+
+                    // Render the logo in magenta
+                    let logo = Paragraph::new(LOGO)
+                        .style(Style::default().fg(Color::Magenta))
+                        .alignment(Alignment::Center);
+                    frame.render_widget(logo, layout[1]);
+
+                    // Add descriptive text below the logo
+                    let gray = Color::Rgb(80, 80, 100);
+                    let description = Text::from(vec![
+                        Line::from(vec![
+                            "Welcome to ".white(),
+                            "Manuscript".magenta().bold(),
+                            " - Your ".white(),
+                            "Blockchain".green().bold(),
+                            " Data Explorer".white(),
+                        ]),
+                        Line::from(vec![
+                            "Select a chain from the left panel to begin".fg(gray),
+                        ]),
+                    ]);
+
+                    let splash = Paragraph::new(description)
+                        .alignment(Alignment::Center);
+                    frame.render_widget(splash, layout[2]);
+
+                    // Return empty vec since we're handling the rendering directly
+                    Vec::new()
                 };
 
                 let right_block = Block::bordered()
@@ -295,4 +343,58 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
             1,                       // Height of text
         ),
     );
+
+    if app.show_sql_window {
+        // Create a floating window for SQL input
+        let area = frame.size();
+        let sql_window_width = (area.width as f32 * 0.8) as u16;
+        let sql_window_height = (area.height as f32 * 0.8) as u16;
+        let sql_window = Rect::new(
+            (area.width - sql_window_width) / 2,
+            (area.height - sql_window_height) / 2,
+            sql_window_width,
+            sql_window_height,
+        );
+
+        // Split the SQL window into input and result areas
+        let sql_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(sql_window);
+
+        // Render SQL input area
+        let input_block = Block::bordered()
+            .title(" SQL Editor (Ctrl+Enter to Execute) ")
+            .title_alignment(Alignment::Center)
+            .border_set(border::THICK);
+
+        let sql_paragraph = Paragraph::new(app.sql_input.as_str())
+            .block(input_block)
+            .style(Style::default().fg(Color::Yellow));
+
+        frame.render_widget(sql_paragraph, sql_chunks[0]);
+
+        // Render cursor
+        frame.set_cursor(
+            sql_chunks[0].x + 1 + (app.sql_cursor_position as u16 % (sql_chunks[0].width - 2)),
+            sql_chunks[0].y + 1 + (app.sql_cursor_position as u16 / (sql_chunks[0].width - 2)),
+        );
+
+        // Render result area if there's a result
+        if let Some(result) = &app.sql_result {
+            let result_block = Block::bordered()
+                .title(" Query Result ")
+                .title_alignment(Alignment::Center)
+                .border_set(border::THICK);
+
+            let result_paragraph = Paragraph::new(result.as_str())
+                .block(result_block)
+                .style(Style::default().fg(Color::Green));
+
+            frame.render_widget(result_paragraph, sql_chunks[1]);
+        }
+    }
 }

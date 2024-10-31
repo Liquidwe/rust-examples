@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::ui;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct App {
     pub chains: Vec<Chain>,            // 保存所有链信息
     pub selected_chain_index: usize,    // 记录当前选中的链索引
@@ -17,15 +17,19 @@ pub struct App {
     pub exit: bool,
     pub current_tab: usize,  // Add this line
     pub example_data: Option<ExampleData>,  // Add this line
+    pub sql_input: String,
+    pub show_sql_window: bool,
+    pub sql_cursor_position: usize,
+    pub sql_result: Option<String>,  // To store the mock response
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ExampleData {
     pub columns: Vec<Column>,
     pub data: Vec<Vec<serde_json::Value>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Column {
     pub name: String,
     pub type_: String,
@@ -66,6 +70,10 @@ impl App {
             exit: false,
             current_tab: 0,  // Add this line
             example_data: None,  // Changed: Initialize as None
+            sql_input: String::new(),
+            show_sql_window: false,
+            sql_cursor_position: 0,
+            sql_result: None,
         }
     }
 
@@ -306,98 +314,166 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent, visible_height: usize) {
-        match key_event.code {
-            KeyCode::Char('q') => self.exit = true,
-            KeyCode::Up => {
-                if !self.show_tables {
-                    if self.selected_chain_index > 0 {
-                        self.selected_chain_index -= 1;
+        if self.show_sql_window {
+            match key_event.code {
+                KeyCode::Esc => {
+                    self.show_sql_window = false;
+                    self.sql_result = None;
+                }
+                KeyCode::Enter => {
+                    // Execute SQL when Ctrl+Enter is pressed
+                    if key_event.modifiers.contains(event::KeyModifiers::CONTROL) {
+                        tokio::spawn({
+                            let mut app = self.clone();
+                            async move {
+                                app.execute_sql().await;
+                                app
+                            }
+                        });
+                    } else {
+                        self.sql_input.push('\n');
+                        self.sql_cursor_position += 1;
+                    }
+                }
+                KeyCode::Char(c) => {
+                    self.sql_input.insert(self.sql_cursor_position, c);
+                    self.sql_cursor_position += 1;
+                }
+                KeyCode::Backspace => {
+                    if self.sql_cursor_position > 0 {
+                        self.sql_input.remove(self.sql_cursor_position - 1);
+                        self.sql_cursor_position -= 1;
+                    }
+                }
+                KeyCode::Left => {
+                    if self.sql_cursor_position > 0 {
+                        self.sql_cursor_position -= 1;
+                    }
+                }
+                KeyCode::Right => {
+                    if self.sql_cursor_position < self.sql_input.len() {
+                        self.sql_cursor_position += 1;
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            match key_event.code {
+                KeyCode::Char('q') => self.exit = true,
+                KeyCode::Up => {
+                    if !self.show_tables {
+                        if self.selected_chain_index > 0 {
+                            self.selected_chain_index -= 1;
+                            // 更新滚动位置
+                            if self.selected_chain_index < self.scroll_offset {
+                                self.scroll_offset = self.selected_chain_index;
+                            }
+                        }
+                    } else {
+                        if let Some(index) = self.selected_table_index {
+                            if index > 0 {
+                                self.selected_table_index = Some(index - 1);
+                                self.update_example_data();
+                            }
+                        }
+                    }
+                }
+                KeyCode::Down => {
+                    if !self.show_tables {
+                        if self.selected_chain_index < self.chains.len() - 1 {
+                            self.selected_chain_index += 1;
+                            // 使用实际可见高度计算滚动位置
+                            if self.selected_chain_index >= self.scroll_offset + visible_height {
+                                self.scroll_offset = self.selected_chain_index - visible_height + 1;
+                            }
+                        }
+                    } else {
+                        if let Some(index) = self.selected_table_index {
+                            let tables_len = self.chains[self.selected_chain_index].dataDictionary.len();
+                            if index < tables_len - 1 {
+                                self.selected_table_index = Some(index + 1);
+                                self.update_example_data();
+                            }
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    if !self.show_tables {
+                        self.show_tables = true;
+                        self.selected_table_index = Some(0);
+                        self.update_example_data();
+                    } else {
+                        // When table is selected, show SQL window
+                        self.show_sql_window = true;
+                        self.sql_input = self.generate_initial_sql();
+                        self.sql_cursor_position = self.sql_input.len();
+                    }
+                }
+                KeyCode::Esc => {
+                    if self.show_tables {
+                        self.show_tables = false;
+                        self.selected_table_index = None;
+                    }
+                }
+                KeyCode::PageUp => {
+                    if !self.show_tables {
+                        // 向上翻一页
+                        if self.selected_chain_index > visible_height {
+                            self.selected_chain_index -= visible_height;
+                        } else {
+                            self.selected_chain_index = 0;
+                        }
                         // 更新滚动位置
                         if self.selected_chain_index < self.scroll_offset {
                             self.scroll_offset = self.selected_chain_index;
                         }
                     }
-                } else {
-                    if let Some(index) = self.selected_table_index {
-                        if index > 0 {
-                            self.selected_table_index = Some(index - 1);
-                            self.update_example_data();
-                        }
-                    }
                 }
-            }
-            KeyCode::Down => {
-                if !self.show_tables {
-                    if self.selected_chain_index < self.chains.len() - 1 {
-                        self.selected_chain_index += 1;
-                        // 使用实际可见高度计算滚动位置
+                KeyCode::PageDown => {
+                    if !self.show_tables {
+                        // 向下翻一页
+                        let new_index = self.selected_chain_index + visible_height;
+                        if new_index < self.chains.len() {
+                            self.selected_chain_index = new_index;
+                        } else {
+                            self.selected_chain_index = self.chains.len() - 1;
+                        }
+                        // 更新滚动位置
                         if self.selected_chain_index >= self.scroll_offset + visible_height {
                             self.scroll_offset = self.selected_chain_index - visible_height + 1;
                         }
                     }
-                } else {
-                    if let Some(index) = self.selected_table_index {
-                        let tables_len = self.chains[self.selected_chain_index].dataDictionary.len();
-                        if index < tables_len - 1 {
-                            self.selected_table_index = Some(index + 1);
-                            self.update_example_data();
-                        }
-                    }
                 }
-            }
-            KeyCode::Enter => {
-                if !self.show_tables {
-                    self.show_tables = true;
-                    self.selected_table_index = Some(0);
-                    self.update_example_data();
+                KeyCode::Tab => {
+                    self.current_tab = (self.current_tab + 1) % 2;
                 }
-            }
-            KeyCode::Esc => {
-                if self.show_tables {
-                    self.show_tables = false;
-                    self.selected_table_index = None;
+                KeyCode::Char('1') => {
+                    self.current_tab = 0;
                 }
-            }
-            KeyCode::PageUp => {
-                if !self.show_tables {
-                    // 向上翻一页
-                    if self.selected_chain_index > visible_height {
-                        self.selected_chain_index -= visible_height;
-                    } else {
-                        self.selected_chain_index = 0;
-                    }
-                    // 更新滚动位置
-                    if self.selected_chain_index < self.scroll_offset {
-                        self.scroll_offset = self.selected_chain_index;
-                    }
+                KeyCode::Char('2') => {
+                    self.current_tab = 1;
                 }
+                _ => {}
             }
-            KeyCode::PageDown => {
-                if !self.show_tables {
-                    // 向下翻一页
-                    let new_index = self.selected_chain_index + visible_height;
-                    if new_index < self.chains.len() {
-                        self.selected_chain_index = new_index;
-                    } else {
-                        self.selected_chain_index = self.chains.len() - 1;
-                    }
-                    // 更新滚动位置
-                    if self.selected_chain_index >= self.scroll_offset + visible_height {
-                        self.scroll_offset = self.selected_chain_index - visible_height + 1;
-                    }
-                }
-            }
-            KeyCode::Tab => {
-                self.current_tab = (self.current_tab + 1) % 2;
-            }
-            KeyCode::Char('1') => {
-                self.current_tab = 0;
-            }
-            KeyCode::Char('2') => {
-                self.current_tab = 1;
-            }
-            _ => {}
         }
+    }
+
+    // Add new method to generate initial SQL
+    fn generate_initial_sql(&self) -> String {
+        if let Some(chain) = self.chains.get(self.selected_chain_index) {
+            if let Some(table_index) = self.selected_table_index {
+                if let Some(table_name) = chain.dataDictionary.keys().nth(table_index) {
+                    return format!("SELECT *\nFROM {}.{}\nLIMIT 10", chain.name.to_lowercase(), table_name);
+                }
+            }
+        }
+        String::new()
+    }
+
+    // Add method to handle SQL execution
+    async fn execute_sql(&mut self) {
+        // Mock response for now
+        self.sql_result = Some("Query executed successfully!\n\nMock Results:\n{\"status\": \"success\", \"rows\": 10}".to_string());
     }
 }
 
