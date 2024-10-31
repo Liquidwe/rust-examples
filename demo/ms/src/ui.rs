@@ -1,10 +1,10 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Stylize, Color, Style},
+    style::{Stylize, Color, Style, Modifier},
     symbols::border,
     text::{Line, Text, Span},
-    widgets::{block::{Position, Title}, Block, List, ListItem, Paragraph, Widget, Tabs},
+    widgets::{block::{Position, Title}, Block, List, ListItem, Paragraph, Widget, Tabs, Clear},
 };
 use crate::app::App;
 
@@ -353,56 +353,34 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     );
 
     if app.show_sql_window {
-        // Create a floating window for SQL input
+        // Create a floating SQL input window
         let area = frame.size();
-        let sql_window_width = (area.width as f32 * 0.8) as u16;
-        let sql_window_height = (area.height as f32 * 0.8) as u16;
+        let sql_window_width = (area.width as f32 * 0.8) as u16;  // 80% of screen width
+        let sql_window_height = (area.height as f32 * 0.4) as u16; // 40% of screen height
         let sql_window = Rect::new(
-            (area.width - sql_window_width) / 2,
-            (area.height - sql_window_height) / 2,
+            (area.width - sql_window_width) / 2,  // Center horizontally
+            (area.height - sql_window_height) / 2, // Center vertically
             sql_window_width,
             sql_window_height,
         );
 
-        // Split the SQL window into input and result areas
-        let sql_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Percentage(50),
-            ])
-            .split(sql_window);
+        // Clear the area under the SQL window
+        frame.render_widget(Clear, sql_window);
 
         // Render SQL input area
         let input_block = Block::bordered()
-            .title(" SQL Editor (Ctrl+Enter to Execute) ")
+            .title(" SQL Editor (Enter to Save) ")
             .title_alignment(Alignment::Center)
-            .border_set(border::THICK);
+            .border_set(border::THICK)
+            .title_style(Style::default()
+                .fg(Color::Yellow)
+                .bold()
+                .add_modifier(Modifier::UNDERLINED | Modifier::ITALIC));
 
         let sql_paragraph = Paragraph::new(app.sql_input.as_str())
             .block(input_block)
-            .style(Style::default().fg(Color::Yellow));
+            .style(Style::default().fg(Color::White));
 
-        frame.render_widget(sql_paragraph, sql_chunks[0]);
-
-        // Render cursor
-        frame.set_cursor(
-            sql_chunks[0].x + 1 + (app.sql_cursor_position as u16 % (sql_chunks[0].width - 2)),
-            sql_chunks[0].y + 1 + (app.sql_cursor_position as u16 / (sql_chunks[0].width - 2)),
-        );
-
-        // Render result area if there's a result
-        if let Some(result) = &app.sql_result {
-            let result_block = Block::bordered()
-                .title(" Query Result ")
-                .title_alignment(Alignment::Center)
-                .border_set(border::THICK);
-
-            let result_paragraph = Paragraph::new(result.as_str())
-                .block(result_block)
-                .style(Style::default().fg(Color::Green));
-
-            frame.render_widget(result_paragraph, sql_chunks[1]);
-        }
+        frame.render_widget(sql_paragraph, sql_window);
     }
 }
