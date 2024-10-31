@@ -61,7 +61,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
             let visible_height = left_chunks[0].height as usize - 2; // 减去边框占用的2行
             let chains_block = Block::bordered()
                 .border_set(border::THICK)
-                .title(Title::from(" Chains ").alignment(Alignment::Center));
+                .title(Title::from(" Omnichain ").alignment(Alignment::Center));
 
             let chain_names: Vec<ListItem> = app.chains
                 .iter()
@@ -86,7 +86,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                         ])
                     } else {
                         Line::from(vec![
-                            format!("{:<3}. {:<25}", index, chain.name).bold()
+                            format!("{:<3}⟠ {:<25}", index, chain.name).bold()
                                 .style(if chain.status == "Online" && chain.time_ago.contains("min") { 
                                     Style::default().fg(Color::Green)
                                 } else if chain.status == "Offline" {
@@ -168,7 +168,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
             // 右侧显示字段信息
             if let Some(selected_chain) = app.chains.get(app.selected_chain_index) {
-                let data_lines = if app.show_tables && app.selected_table_index.is_some() {
+                let mut data_lines = if app.show_tables && app.selected_table_index.is_some() {
                     // 获取选中的表名
                     let table_name = selected_chain.dataDictionary
                         .keys()
@@ -177,16 +177,41 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                         .unwrap_or("");
 
                     // 获取选中表的字段信息
-                    if let Some(fields) = selected_chain.dataDictionary.get(table_name) {
-                        fields.iter().map(|item| {
+                    let fields = selected_chain.dataDictionary.get(table_name);
+                    
+                    let mut lines = Vec::new();
+                    
+                    // Add field descriptions
+                    if let Some(fields) = fields {
+                        lines.extend(fields.iter().map(|item| {
                             Line::from(format!(
                                 "{}: {} - {}",
                                 item.name, item.dataType, item.description
                             ))
-                        }).collect()
-                    } else {
-                        vec![Line::from("No fields available")]
+                        }));
                     }
+
+                    // Add example data if available
+                    if let Some(example_data) = &app.example_data {
+                        lines.push(Line::from(""));
+                        lines.push(Line::from("Example Data:".bold()));
+                        
+                        // Add column headers
+                        lines.push(Line::from(example_data.columns.iter()
+                            .map(|col| format!("{} ({})", col.name, col.type_))
+                            .collect::<Vec<_>>()
+                            .join(" | ")));
+
+                        // Add sample rows
+                        for row in example_data.data.iter().take(5) {  // Show first 5 rows
+                            lines.push(Line::from(row.iter()
+                                .map(|val| val.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" | ")));
+                        }
+                    }
+
+                    lines
                 } else {
                     vec![Line::from("Select a table to view fields")]
                 };

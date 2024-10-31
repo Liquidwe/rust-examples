@@ -3,6 +3,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::DefaultTerminal;
 use serde::{Deserialize, Serialize};
 use reqwest;
+use serde_json::json;
 
 use crate::ui;
 
@@ -15,6 +16,19 @@ pub struct App {
     pub scroll_offset: usize,    // 新增：跟踪滚动位置
     pub exit: bool,
     pub current_tab: usize,  // Add this line
+    pub example_data: Option<ExampleData>,  // Add this line
+}
+
+#[derive(Debug, Default)]
+pub struct ExampleData {
+    pub columns: Vec<Column>,
+    pub data: Vec<Vec<serde_json::Value>>,
+}
+
+#[derive(Debug)]
+pub struct Column {
+    pub name: String,
+    pub type_: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -51,6 +65,7 @@ impl App {
             scroll_offset: 0,     // 初始化滚动位置
             exit: false,
             current_tab: 0,  // Add this line
+            example_data: None,  // Changed: Initialize as None
         }
     }
 
@@ -102,6 +117,66 @@ impl App {
         }
     }
 
+    fn mock_blocks_data() -> ExampleData {
+        ExampleData {
+            columns: vec![
+                Column { name: "block_number".to_string(), type_: "bigint".to_string() },
+                Column { name: "hash".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "parent_hash".to_string(), type_: "varchar(66)".to_string() },
+                // Add more columns as needed
+            ],
+            data: vec![
+                vec![
+                    json!(0),
+                    json!("0x81005434635456a16f74ff7023fbe0bf423abbc8a8deb093ffff455c0ad3b741"),
+                    json!("0x0000000000000000000000000000000000000000000000000000000000000000"),
+                    // Add more field values
+                ],
+                // Add more rows as needed
+            ],
+        }
+    }
+
+    fn mock_transaction_logs_data() -> ExampleData {
+        ExampleData {
+            columns: vec![
+                Column { name: "block_number".to_string(), type_: "bigint".to_string() },
+                Column { name: "hash".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "parent_hash".to_string(), type_: "varchar(66)".to_string() },
+                // Add more columns as needed
+            ],
+            data: vec![
+                vec![
+                    json!(0),
+                    json!("0x81005434635456a16f74ff7023fbe0bf423abbc8a8deb093ffff455c0ad3b741"),
+                    json!("0x0000000000000000000000000000000000000000000000000000000000000000"),
+                    // Add more field values
+                ],
+                // Add more rows as needed
+            ],
+        }
+    }
+
+    fn mock_transactions_data() -> ExampleData {
+        ExampleData {
+            columns: vec![
+                Column { name: "block_number".to_string(), type_: "bigint".to_string() },
+                Column { name: "hash".to_string(), type_: "varchar(66)".to_string() },
+                Column { name: "parent_hash".to_string(), type_: "varchar(66)".to_string() },
+                // Add more columns as needed
+            ],
+            data: vec![
+                vec![
+                    json!(0),
+                    json!("0x81005434635456a16f74ff7023fbe0bf423abbc8a8deb093ffff455c0ad3b741"),
+                    json!("0x0000000000000000000000000000000000000000000000000000000000000000"),
+                    // Add more field values
+                ],
+                // Add more rows as needed
+            ],
+        }
+    }
+
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {
             let visible_height = terminal.size()?.height as usize - 2; // 减去边框等装饰元素的高度
@@ -116,6 +191,24 @@ impl App {
             };
         }
         Ok(())
+    }
+
+    pub fn update_example_data(&mut self) {
+        if let Some(selected_chain) = self.chains.get(self.selected_chain_index) {
+            if let Some(table_index) = self.selected_table_index {
+                let table_name = selected_chain.dataDictionary
+                    .keys()
+                    .nth(table_index)
+                    .map(|s| s.as_str());
+
+                self.example_data = match table_name {
+                    Some("blocks") => Some(Self::mock_blocks_data()),
+                    Some("transactions") => Some(Self::mock_transactions_data()),
+                    Some("transactionLogs") => Some(Self::mock_transaction_logs_data()),
+                    _ => None,
+                };
+            }
+        }
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent, visible_height: usize) {
@@ -134,6 +227,7 @@ impl App {
                     if let Some(index) = self.selected_table_index {
                         if index > 0 {
                             self.selected_table_index = Some(index - 1);
+                            self.update_example_data();
                         }
                     }
                 }
@@ -152,6 +246,7 @@ impl App {
                         let tables_len = self.chains[self.selected_chain_index].dataDictionary.len();
                         if index < tables_len - 1 {
                             self.selected_table_index = Some(index + 1);
+                            self.update_example_data();
                         }
                     }
                 }
@@ -160,6 +255,7 @@ impl App {
                 if !self.show_tables {
                     self.show_tables = true;
                     self.selected_table_index = Some(0);
+                    self.update_example_data();
                 }
             }
             KeyCode::Esc => {
