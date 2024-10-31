@@ -280,7 +280,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                         Line::from(vec![
                             "Select a chain from the left panel to explore".fg(gray),
                         ]),
-                        Line::from(""),  // 添加空行
+                        Line::from(""),
                         Line::from(vec![
                             "GitHub: ".fg(Color::Rgb(200, 200, 200)),
                             "chainbase-labs/manuscript-core".fg(Color::Rgb(100, 200, 200)).bold(),
