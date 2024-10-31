@@ -136,7 +136,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                         .collect();
 
                     let tables_block = Block::bordered()
-                        .title(" Tables ")
+                        .title(format!(" {} Tables ", selected_chain.name))
                         .title_alignment(Alignment::Center)
                         .border_set(border::THICK);
 
