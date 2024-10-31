@@ -369,7 +369,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
         // Create input block
         let input_block = Block::bordered()
-            .title(" SQL Editor (Ctrl+Enter to Execute) ")
+            .title(" SQL Editor (Esc → Save & Esc) ")
             .title_alignment(Alignment::Center)
             .border_set(border::THICK)
             .title_style(Style::default()
