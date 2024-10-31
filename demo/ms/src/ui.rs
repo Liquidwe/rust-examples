@@ -270,18 +270,26 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                         Line::from(vec![
                             "Welcome to ".white(),
                             "Manuscript".magenta().bold(),
-                            " - Your ".white(),
-                            "Blockchain".green().bold(),
-                            " Data Explorer".white(),
                         ]),
                         Line::from(vec![
-                            "Select a chain from the left panel to begin".fg(gray),
+                            "Build The World's ".white(),
+                            "Largest".green().bold(),
+                            " Omnichain ".white(),
+                            "Data Network".yellow().bold(),
+                        ]),
+                        Line::from(vec![
+                            "Select a chain from the left panel to explore".fg(gray),
+                        ]),
+                        Line::from(""),  // 添加空行
+                        Line::from(vec![
+                            "GitHub: ".fg(Color::Rgb(200, 200, 200)),
+                            "chainbase-labs/manuscript-core".fg(Color::Rgb(100, 200, 200)).bold(),
                         ]),
                     ]);
 
                     let splash = Paragraph::new(description)
                         .alignment(Alignment::Center);
-                    frame.render_widget(splash, layout[2]);
+                    frame.render_widget(splash, layout[3]);
 
                     // Return empty vec since we're handling the rendering directly
                     Vec::new()
@@ -322,7 +330,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
     // Create text spans with different colors
     let text = vec![
         Span::styled(
-            "Manuscript GUI [v1.1.0] ",
+            "Chainbase Network [v1.1.0] ",
             Style::default().bold()
         ),
         Span::styled(
