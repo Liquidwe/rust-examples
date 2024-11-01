@@ -13,6 +13,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
     // Create tabs
     let titles = vec!["NETWORK [1]", "MANUSCRIPTS [2]"];
+    let executing_text = String::from("Executing...");
     let tabs = Tabs::new(titles)
         .block(Block::bordered().title("Tabs"))
         .select(app.current_tab)
@@ -297,19 +298,21 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
                 // Modify the right side rendering when there's saved SQL
                 if let Some(selected_chain) = app.chains.get(app.selected_chain_index) {
+                    // 如果有选中的链,且显示表格,且有选中的表,且有保存的SQL
                     if app.show_tables && app.selected_table_index.is_some() && app.saved_sql.is_some() {
-                        // Split right panel into upper and lower sections
+
+                        // 将右侧面板分为上下两部分
                         let right_chunks = Layout::default()
                             .direction(Direction::Vertical)
                             .constraints([
-                                Constraint::Percentage(45),  // Upper half for SQL
-                                Constraint::Percentage(55),  // Lower half for results
+                                Constraint::Percentage(45),  // 上半部分用于显示SQL
+                                Constraint::Percentage(55),  // 下半部分用于显示结果
                             ])
                             .split(chunks[1]);
 
-                        // Render saved SQL in upper section
+                        // 在上半部分渲染保存的SQL
                         let sql_block = Block::bordered()
-                            .title(" Saved SQL (Press 'e' to edit) ")
+                            .title(" Saved SQL (Press 'e' to edit) ")  // 标题提示按e键编辑
                             .title_alignment(Alignment::Center)
                             .border_set(border::THICK);
 
@@ -318,18 +321,83 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                             .wrap(ratatui::widgets::Wrap { trim: true });
                         frame.render_widget(sql_paragraph, right_chunks[0]);
 
-                        // Render empty results section
+                        // 在下半部分渲染结果区域
                         let results_block = Block::bordered()
                             .title(" Results ")
                             .title_alignment(Alignment::Center)
                             .border_set(border::THICK);
 
-                        let results_paragraph = Paragraph::new("")
+                        // 根据不同状态显示不同内容
+                        let results_content = if app.sql_executing {
+                            // 正在执行SQL时显示执行状态
+                            let sql_result_text = app.sql_result.as_ref().unwrap_or(&executing_text);
+                            vec![
+                                Line::from(""),
+                                Line::from(Span::styled("Executing query...", Style::default().fg(Color::Yellow).bold())),
+                                Line::from(Span::styled(
+                                    sql_result_text,
+                                    Style::default().fg(Color::Yellow)
+                                ))
+                            ]
+                        } else if let Some(error) = &app.sql_error {
+                            // 有错误时显示错误信息
+                            vec![
+                                Line::from(""),
+                                Line::from("Error:".red().bold()),
+                                Line::from(error.as_str().red())
+                            ]
+                        } else if !app.sql_data.is_empty() {
+                            // 有查询结果时显示结果数据
+                            let mut lines = Vec::new();
+                            
+                            // 添加状态信息
+                            if let Some(result) = &app.sql_result {
+                                lines.push(Line::from(result.clone().green()));
+                                lines.push(Line::from(""));
+                            }
+                            
+                            // 添加表头
+                            let header = Line::from(
+                                app.sql_columns.iter()
+                                    .map(|col| Span::styled(
+                                        format!("{:<15}", col.name),
+                                        Style::default().add_modifier(Modifier::BOLD)
+                                    ))
+                                    .collect::<Vec<_>>()
+                            );
+                            lines.push(header);
+                            lines.push(Line::from("─".repeat(80)));
+
+                            // 添加数据行
+                            for row in &app.sql_data {
+                                lines.push(Line::from(
+                                    row.iter()
+                                        .map(|val| Span::styled(
+                                            format!("{:<15}", val),
+                                            Style::default().fg(Color::White)
+                                        ))
+                                        .collect::<Vec<_>>()
+                                ));
+                            }
+                            lines
+                        } else {
+                            // 默认显示提示信息
+                            vec![
+                                Line::from(""),
+                                Line::from(if let Some(msg) = &app.sql_result {
+                                    msg.clone().yellow()
+                                } else {
+                                    "No results yet. Press 'r' to execute the query.".to_string().yellow()
+                                })
+                            ]
+                        };
+
+                        let results_paragraph = Paragraph::new(results_content)
                             .block(results_block)
                             .wrap(ratatui::widgets::Wrap { trim: true });
                         frame.render_widget(results_paragraph, right_chunks[1]);
                     } else {
-                        // Original data dictionary rendering
+                        // 如果没有保存的SQL,显示原始的数据字典
                         let right_block = Block::bordered()
                             .title(" Data Dictionary ")
                             .title_alignment(Alignment::Center)

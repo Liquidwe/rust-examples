@@ -4,10 +4,12 @@ use ratatui::DefaultTerminal;
 use serde::{Deserialize, Serialize};
 use reqwest;
 use serde_json::json;
+use reqwest::header::{HeaderMap, HeaderValue};
+use tokio::sync::mpsc;
 
 use crate::ui;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug)]
 pub struct App {
     pub chains: Vec<Chain>,            // 保存所有链信息
     pub selected_chain_index: usize,    // 记录当前选中的链索引
@@ -22,6 +24,38 @@ pub struct App {
     pub sql_cursor_position: usize,
     pub sql_result: Option<String>,  // To store the mock response
     pub saved_sql: Option<String>,  // Add this field to store saved SQL
+    pub sql_executing: bool,
+    pub sql_error: Option<String>,
+    pub sql_columns: Vec<Column>,
+    pub sql_data: Vec<Vec<serde_json::Value>>,
+    sql_sender: Option<mpsc::Sender<Result<serde_json::Value, String>>>,
+    sql_receiver: Option<mpsc::Receiver<Result<serde_json::Value, String>>>,
+}
+
+impl Clone for App {
+    fn clone(&self) -> Self {
+        Self {
+            chains: self.chains.clone(),
+            selected_chain_index: self.selected_chain_index,
+            selected_table_index: self.selected_table_index,
+            show_tables: self.show_tables,
+            scroll_offset: self.scroll_offset,
+            exit: self.exit,
+            current_tab: self.current_tab,
+            example_data: self.example_data.clone(),
+            sql_input: self.sql_input.clone(),
+            show_sql_window: self.show_sql_window,
+            sql_cursor_position: self.sql_cursor_position,
+            sql_result: self.sql_result.clone(),
+            saved_sql: self.saved_sql.clone(),
+            sql_executing: self.sql_executing,
+            sql_error: self.sql_error.clone(),
+            sql_columns: self.sql_columns.clone(),
+            sql_data: self.sql_data.clone(),
+            sql_sender: self.sql_sender.clone(),
+            sql_receiver: None,  // Don't clone the receiver
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -54,12 +88,11 @@ pub struct DataDictionaryItem {
 
 impl App {
     pub async fn new() -> Self {
+        let (sql_sender, sql_receiver) = mpsc::channel(32);
+        
         let chains = match App::fetch_chains().await {
             Ok(data) => data,
-            Err(_) => {
-                println!("Failed to load chain data. Initializing with empty data.");
-                Vec::new() // 如果加载失败，返回空向量
-            }
+            Err(_) => Vec::new()
         };
 
         App {
@@ -76,6 +109,12 @@ impl App {
             sql_cursor_position: 0,
             sql_result: None,
             saved_sql: None,
+            sql_executing: false,
+            sql_error: None,
+            sql_columns: Vec::new(),
+            sql_data: Vec::new(),
+            sql_sender: Some(sql_sender),
+            sql_receiver: Some(sql_receiver),
         }
     }
 
@@ -270,23 +309,55 @@ impl App {
         }
     }
 
+    // run 方法是应用程序的主循环
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
+        // 当 self.exit 为 false 时持续运行
         while !self.exit {
+            // 计算可见区域高度(终端高度减去边框占用的2行)
             let visible_height = terminal.size()?.height as usize - 2;
             
-            // Draw the UI
+            // 调用 ui::draw 函数绘制用户界面
             terminal.draw(|frame| ui::draw(frame, self))?;
             
-            // Wait for event with timeout (100ms)
-            if event::poll(Duration::from_millis(1000))? {
-                // Handle events if any
+            // 等待事件,超时时间为100毫秒
+            if event::poll(Duration::from_millis(100))? {
+                // 如果有事件发生
                 if let Event::Key(key_event) = event::read()? {
+                    // 只处理按键按下事件
                     if key_event.kind == KeyEventKind::Press {
+                        // 调用 handle_key_event 处理按键事件
                         self.handle_key_event(key_event, visible_height);
                     }
                 }
             }
-            // If no event, the timeout will trigger a redraw anyway
+
+            // Check for SQL execution results
+            // 检查是否正在执行SQL查询
+            if self.sql_executing {
+                // 如果有接收器,尝试从通道中接收SQL执行结果
+                if let Some(receiver) = &mut self.sql_receiver {
+                    // 非阻塞地尝试接收结果
+                    match receiver.try_recv() {
+                        // 成功接收到结果
+                        Ok(result) => match result {
+                            // SQL执行成功,处理返回的JSON数据
+                            Ok(json) => self.handle_sql_response(json),
+                            // SQL执行出错,记录错误信息并停止执行状态
+                            Err(error) => {
+                                self.sql_error = Some(error);
+                                self.sql_executing = false;
+                            }
+                        },
+                        // 通道为空,继续等待
+                        Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {},
+                        // 通道关闭,记录错误并停止执行状态
+                        Err(_) => {
+                            self.sql_executing = false;
+                            self.sql_error = Some("Channel closed".to_string());
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -331,13 +402,13 @@ impl App {
                 KeyCode::Enter => {
                     // Execute SQL when Ctrl+Enter is pressed
                     if key_event.modifiers.contains(event::KeyModifiers::CONTROL) {
-                        tokio::spawn({
-                            let mut app = self.clone();
-                            async move {
-                                app.execute_sql().await;
-                                app
-                            }
-                        });
+                        // tokio::spawn({
+                        //     let mut app = self.clone();
+                        //     async move {
+                        //         app.execute_sql().await;
+                        //         app
+                        //     }
+                        // });
                     } else {
                         // Insert newline at cursor position
                         self.sql_input.insert(self.sql_cursor_position, '\n');
@@ -474,7 +545,7 @@ impl App {
                 }
                 KeyCode::PageUp => {
                     if !self.show_tables {
-                        // 向上翻一页
+                        // 向上一页
                         if self.selected_chain_index > visible_height {
                             self.selected_chain_index -= visible_height;
                         } else {
@@ -518,6 +589,15 @@ impl App {
                         self.sql_cursor_position = self.sql_input.len();
                     }
                 }
+                KeyCode::Char('r') => {
+                    // Check if we have saved SQL and are in table view
+                    if self.show_tables && self.saved_sql.is_some() && !self.sql_executing {
+                        // Create a blocking runtime and execute SQL
+                        println!("Debug: 1111111111");
+                        self.execute_sql();
+                        println!("Debug: 222222222");
+                    }
+                }
                 _ => {}
             }
         }
@@ -536,9 +616,87 @@ impl App {
     }
 
     // Add method to handle SQL execution
-    async fn execute_sql(&mut self) {
-        // Mock response for now
-        self.sql_result = Some("Query executed successfully!\n\nMock Results:\n{\"status\": \"success\", \"rows\": 10}".to_string());
+    fn execute_sql(&mut self) {
+        if let Some(sender) = self.sql_sender.clone() {
+            self.sql_executing = true;
+            self.sql_error = None;
+            self.sql_columns.clear();
+            self.sql_data.clear();
+            self.sql_result = Some("Executing query...".to_string());
+
+            // Create HTTP client
+            let client = reqwest::Client::new();
+            
+            // Set up headers
+            let mut headers = HeaderMap::new();
+            headers.insert("X-Trino-User", HeaderValue::from_static("datacloud"));
+            headers.insert("X-Trino-Catalog", HeaderValue::from_static("paimon"));
+            headers.insert("Content-Type", HeaderValue::from_static("text/plain"));
+
+            // Clone necessary data for the async closure
+            let sql_input = self.sql_input.clone();
+
+            // Spawn the async task
+            tokio::spawn(async move {
+                let result = client.post("http://47.236.12.48:9090/v1/statement")
+                    .headers(headers.clone())
+                    .body(sql_input)
+                    .send()
+                    .await;
+
+                let _ = match result {
+                    Ok(resp) => {
+                        match resp.json::<serde_json::Value>().await {
+                            Ok(json) => sender.send(Ok(json)).await,
+                            Err(e) => sender.send(Err(format!("Failed to parse response: {}", e))).await
+                        }
+                    }
+                    Err(e) => sender.send(Err(format!("Request failed: {}", e))).await
+                };
+            });
+        }
+    }
+
+    // Add a new method to handle SQL response
+    pub fn handle_sql_response(&mut self, json: serde_json::Value) {
+        println!("Debug: 3333333");
+
+        if let Some(error) = json.get("error") {
+            self.sql_error = Some(error.to_string());
+            self.sql_executing = false;
+            return;
+        }
+
+        // Process columns if available
+        if let Some(columns) = json.get("columns").and_then(|c| c.as_array()) {
+            self.sql_columns = columns.iter()
+                .filter_map(|col| {
+                    Some(Column {
+                        name: col.get("name")?.as_str()?.to_string(),
+                        type_: col.get("type")?.as_str()?.to_string(),
+                    })
+                })
+                .collect();
+        }
+
+        // Process data if available
+        if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+            self.sql_data = data.iter()
+                .filter_map(|row| row.as_array().cloned())
+                .collect();
+        }
+
+        // Update status
+        if let Some(stats) = json.get("stats") {
+            if let Some(state) = stats.get("state").and_then(|s| s.as_str()) {
+                self.sql_result = Some(format!("Query status: {}", state));
+                if state == "FINISHED" {
+                    println!("Debug: {}", self.sql_data.len());
+                    self.sql_executing = false;
+                    self.sql_result = Some(format!("Query completed: {} rows returned", self.sql_data.len()));
+                }
+            }
+        }
     }
 }
 
