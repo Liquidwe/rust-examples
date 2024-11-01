@@ -168,7 +168,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                 if app.show_tables { left_chunks[2] } else { left_chunks[1] }
             );
 
-            // 右侧显示字��
+            // 右侧显示字
             if let Some(selected_chain) = app.chains.get(app.selected_chain_index) {
                 let mut data_lines = if app.show_tables && app.selected_table_index.is_some() {
                     let table_name = selected_chain.dataDictionary
@@ -295,15 +295,52 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                     Vec::new()
                 };
 
-                let right_block = Block::bordered()
-                    .title(" Data Dictionary ")
-                    .title_alignment(Alignment::Center)
-                    .border_set(border::THICK);
+                // Modify the right side rendering when there's saved SQL
+                if let Some(selected_chain) = app.chains.get(app.selected_chain_index) {
+                    if app.show_tables && app.selected_table_index.is_some() && app.saved_sql.is_some() {
+                        // Split right panel into upper and lower sections
+                        let right_chunks = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints([
+                                Constraint::Percentage(50),  // Upper half for SQL
+                                Constraint::Percentage(50),  // Lower half for results
+                            ])
+                            .split(chunks[1]);
 
-                let data_paragraph = Paragraph::new(data_lines)
-                    .block(right_block)
-                    .wrap(ratatui::widgets::Wrap { trim: true });
-                frame.render_widget(data_paragraph, chunks[1]);
+                        // Render saved SQL in upper section
+                        let sql_block = Block::bordered()
+                            .title(" Saved SQL ")
+                            .title_alignment(Alignment::Center)
+                            .border_set(border::THICK);
+
+                        let sql_paragraph = Paragraph::new(app.saved_sql.as_ref().unwrap().as_str())
+                            .block(sql_block)
+                            .wrap(ratatui::widgets::Wrap { trim: true });
+                        frame.render_widget(sql_paragraph, right_chunks[0]);
+
+                        // Render empty results section
+                        let results_block = Block::bordered()
+                            .title(" Results ")
+                            .title_alignment(Alignment::Center)
+                            .border_set(border::THICK);
+
+                        let results_paragraph = Paragraph::new("")
+                            .block(results_block)
+                            .wrap(ratatui::widgets::Wrap { trim: true });
+                        frame.render_widget(results_paragraph, right_chunks[1]);
+                    } else {
+                        // Original data dictionary rendering
+                        let right_block = Block::bordered()
+                            .title(" Data Dictionary ")
+                            .title_alignment(Alignment::Center)
+                            .border_set(border::THICK);
+
+                        let data_paragraph = Paragraph::new(data_lines)
+                            .block(right_block)
+                            .wrap(ratatui::widgets::Wrap { trim: true });
+                        frame.render_widget(data_paragraph, chunks[1]);
+                    }
+                }
             }
         }
         1 => {

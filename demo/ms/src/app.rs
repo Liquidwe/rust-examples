@@ -21,6 +21,7 @@ pub struct App {
     pub show_sql_window: bool,
     pub sql_cursor_position: usize,
     pub sql_result: Option<String>,  // To store the mock response
+    pub saved_sql: Option<String>,  // Add this field to store saved SQL
 }
 
 #[derive(Debug, Default, Clone)]
@@ -74,6 +75,7 @@ impl App {
             show_sql_window: false,
             sql_cursor_position: 0,
             sql_result: None,
+            saved_sql: None,
         }
     }
 
@@ -317,8 +319,14 @@ impl App {
         if self.show_sql_window {
             match key_event.code {
                 KeyCode::Esc => {
+                    // Save the SQL when closing the window
+                    if !self.sql_input.trim().is_empty() {
+                        self.saved_sql = Some(self.sql_input.clone());
+                    }
+                    // Reset SQL window state
                     self.show_sql_window = false;
                     self.sql_result = None;
+                    // Don't clear the selected table index anymore
                 }
                 KeyCode::Enter => {
                     // Execute SQL when Ctrl+Enter is pressed
@@ -455,7 +463,11 @@ impl App {
                     }
                 }
                 KeyCode::Esc => {
-                    if self.show_tables {
+                    if self.show_tables && self.saved_sql.is_some() {
+                        // Clear saved SQL and return to table view
+                        self.saved_sql = None;
+                    } else if self.show_tables {
+                        // No saved SQL, exit table view completely
                         self.show_tables = false;
                         self.selected_table_index = None;
                     }
