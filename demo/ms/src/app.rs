@@ -510,6 +510,14 @@ impl App {
                 KeyCode::Char('2') => {
                     self.current_tab = 1;
                 }
+                KeyCode::Char('e') => {
+                    // 如果有保存的 SQL 并且正在显示表格，允许重新编辑
+                    if self.show_tables && self.saved_sql.is_some() {
+                        self.show_sql_window = true;
+                        self.sql_input = self.saved_sql.clone().unwrap_or_default();
+                        self.sql_cursor_position = self.sql_input.len();
+                    }
+                }
                 _ => {}
             }
         }

@@ -302,14 +302,14 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                         let right_chunks = Layout::default()
                             .direction(Direction::Vertical)
                             .constraints([
-                                Constraint::Percentage(50),  // Upper half for SQL
-                                Constraint::Percentage(50),  // Lower half for results
+                                Constraint::Percentage(45),  // Upper half for SQL
+                                Constraint::Percentage(55),  // Lower half for results
                             ])
                             .split(chunks[1]);
 
                         // Render saved SQL in upper section
                         let sql_block = Block::bordered()
-                            .title(" Saved SQL ")
+                            .title(" Saved SQL (Press 'e' to edit) ")
                             .title_alignment(Alignment::Center)
                             .border_set(border::THICK);
 
