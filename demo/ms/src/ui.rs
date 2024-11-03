@@ -237,7 +237,25 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
                     lines
                 } else {
-                    const LOGO: &str = "
+
+  const LOGO: &str = "
+ ########   #######   ######## 
+ #########  #######  ######### 
+ ##########  #####  ########## 
+  ########## ##### ##########  
+      ####### ### #######      
+        ####  #  #####         
+ #########            ######## 
+ ###########       ########### 
+ ########             ######## 
+        #####  #  #####        
+     ######## ###  #######     
+  ########## ##### ##########  
+ ##########  #####  ########## 
+ #########  #######  ######### 
+ ########   #######   ########";
+
+ const LOGO_LETTER: &str = "
  ██████╗██╗  ██╗ █████╗ ██╗███╗   ██╗██████╗  █████╗ ███████╗███████╗
 ██╔════╝██║  ██║██╔══██╗██║████╗  ██║██╔══██╗██╔══██╗██╔════╝██╔════╝
 ██║     ███████║███████║██║██╔██╗ ██║██████╔╝███████║███████╗█████╗  
@@ -248,24 +266,36 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                     let layout = Layout::default()
                         .direction(Direction::Vertical)
                         .constraints([
-                            Constraint::Percentage(20),
+                            Constraint::Percentage(15),  // Top spacing
                             Constraint::Length(
                                 TryInto::<u16>::try_into(LOGO.lines().count())
                                     .unwrap_or_default()
                                     .saturating_add(2),
                             ),
-                            Constraint::Length(3),
-                            Constraint::Fill(1),
+                            Constraint::Length(
+                                TryInto::<u16>::try_into(LOGO_LETTER.lines().count())
+                                    .unwrap_or_default()
+                                    .saturating_add(2),
+                            ),
+                            Constraint::Length(3),  // Spacing between logos and description
+                            Constraint::Fill(1),    // Description area
                         ])
                         .split(chunks[1]);  // Use the right panel area
 
-                    // Render the logo in magenta
+                    // Render the symbol logo in magenta
                     let logo = Paragraph::new(LOGO)
                         .style(Style::default().fg(Color::Magenta))
                         .alignment(Alignment::Center);
                     frame.render_widget(logo, layout[1]);
 
-                    // Add descriptive text below the logo
+                    // Render the text logo below in cyan
+                    let logo_letter = Paragraph::new(LOGO_LETTER)
+                        // .style(Style::default().fg(Color::Magenta))
+                        .style(Style::default().fg(Color::Cyan))
+                        .alignment(Alignment::Center);
+                    frame.render_widget(logo_letter, layout[2]);
+
+                    // Add descriptive text below both logos
                     let gray = Color::Rgb(80, 80, 100);
                     let description = Text::from(vec![
                         Line::from(vec![
@@ -290,7 +320,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
                     let splash = Paragraph::new(description)
                         .alignment(Alignment::Center);
-                    frame.render_widget(splash, layout[3]);
+                    frame.render_widget(splash, layout[4]);  // Changed to layout[4]
 
                     // Return empty vec since we're handling the rendering directly
                     Vec::new()
