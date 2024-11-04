@@ -3,6 +3,8 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tokio::sync::mpsc;
 use crate::app::AppUpdate;
+use crate::app::SetupStep;
+use crate::app::SetupStepStatus;
 
 #[derive(Debug)]
 pub struct DockerManager {
@@ -17,39 +19,40 @@ impl DockerManager {
     }
 
     pub async fn setup(&self, sender: Option<mpsc::Sender<AppUpdate>>) -> Result<String, String> {
-        // Step 1: Check if docker is installed
+        // Step 1: Check Docker installation
+        if let Some(sender) = &sender {
+            let _ = sender.send(AppUpdate::SetupProgress(SetupStep::CheckingDocker, SetupStepStatus::InProgress)).await;
+        }
         if !self.check_docker_installed() {
             return Err("Docker is not installed or not accessible".to_string());
         }
 
-        if let Some(sender) = &sender {
-            let _ = sender.send(AppUpdate::DockerStatus(
-                "Checking Docker installation...".to_string()
-            )).await;
-        }
-
         // Step 2: Pull the image
         if let Some(sender) = &sender {
-            let _ = sender.send(AppUpdate::DockerStatus(
-                "Pulling required images...".to_string()
-            )).await;
+            let _ = sender.send(AppUpdate::SetupProgress(SetupStep::PullingImage, SetupStepStatus::InProgress)).await;
         }
-        
         if let Err(e) = self.pull_image().await {
             return Err(format!("Failed to pull image: {}", e));
         }
 
         // Step 3: Run the container
         if let Some(sender) = &sender {
-            let _ = sender.send(AppUpdate::DockerStatus(
-                "Starting container...".to_string()
-            )).await;
+            let _ = sender.send(AppUpdate::SetupProgress(SetupStep::StartingContainer, SetupStepStatus::InProgress)).await;
         }
-        
         if let Err(e) = self.run_container().await {
             return Err(format!("Failed to start container: {}", e));
         }
-        
+
+        // Step 4: Configure network
+        if let Some(sender) = &sender {
+            let _ = sender.send(AppUpdate::SetupProgress(SetupStep::ConfiguringNetwork, SetupStepStatus::InProgress)).await;
+        }
+
+        // Step 5: Verify setup
+        if let Some(sender) = &sender {
+            let _ = sender.send(AppUpdate::SetupProgress(SetupStep::VerifyingSetup, SetupStepStatus::InProgress)).await;
+        }
+
         Ok("Container started successfully".to_string())
     }
 
@@ -74,11 +77,25 @@ impl DockerManager {
     }
 
     async fn run_container(&self) -> Result<(), String> {
+        // Check if container already exists
+        let check_output = Command::new("docker")
+            .args(["ps", "-q", "-f", "name=manuscript-debug"])
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        // If container exists (output not empty), return success
+        if !String::from_utf8_lossy(&check_output.stdout).trim().is_empty() {
+            return Ok(());
+        }
+
+        // Container doesn't exist, create and run it
         let output = Command::new("docker")
             .args([
                 "run",
                 "-d",  // Run in detached mode
                 "--rm",
+                "--name",
+                "manuscript-debug", 
                 "-p", "18083:8083",
                 "-p", "18081:8081",
                 &self.image,
@@ -90,18 +107,18 @@ impl DockerManager {
             return Err(String::from_utf8_lossy(&output.stderr).to_string());
         }
 
-        // Wait for container to be ready (you might want to implement a proper health check)
+        // Wait for container to be ready
         sleep(Duration::from_secs(5)).await;
         Ok(())
     }
 
     pub fn get_setup_progress(&self, timer: u64) -> Vec<(String, bool)> {
         vec![
-            ("Checking Docker installation".to_string(), timer >= 10),
-            ("Pulling required images".to_string(), timer >= 30),
-            ("Starting containers".to_string(), timer >= 50),
-            ("Configuring network".to_string(), timer >= 70),
-            ("Verifying setup".to_string(), timer >= 90)
+            ("Checking Docker installation".to_string(), timer >= 5),
+            ("Pulling required images".to_string(), timer >= 25),
+            ("Starting container".to_string(), timer >= 45),
+            ("Configuring network".to_string(), timer >= 65),
+            ("Verifying setup".to_string(), timer >= 85)
         ]
     }
 }

@@ -50,6 +50,7 @@ pub struct App {
     pub should_cancel_setup: bool,  // Add this new field
     pub update_sender: Option<mpsc::Sender<AppUpdate>>,
     pub update_receiver: Option<mpsc::Receiver<AppUpdate>>,
+    pub current_setup_step: Option<SetupStep>,  // 新增字段
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +105,7 @@ impl Clone for App {
             should_cancel_setup: self.should_cancel_setup,  // Clone the new field
             update_sender: self.update_sender.clone(),
             update_receiver: None,
+            current_setup_step: self.current_setup_step.clone(),
         }
     }
 }
@@ -136,12 +138,44 @@ pub struct DataDictionaryItem {
     pub description: String,
 }
 
-// 添加新的状态更新类型
+// 修改 AppUpdate 枚举以包含更详细的进度信息
 #[derive(Clone, Debug)]
 pub enum AppUpdate {
     DockerStatus(String),
+    SetupProgress(SetupStep, SetupStepStatus),  // 修改这一行
     SetupComplete,
-    SetupFailed(String),
+    SetupFailed(String, SetupStep),  // 修改这一行，添加失败的步骤
+}
+
+// 新增状态枚举
+#[derive(Clone, Debug, PartialEq)]
+pub enum SetupStepStatus {
+    Pending,
+    InProgress,
+    Complete,
+    Failed,
+}
+
+// 新增 SetupStep 枚举来表示具体步骤
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SetupStep {
+    CheckingDocker,
+    PullingImage,
+    StartingContainer,
+    ConfiguringNetwork,
+    VerifyingSetup,
+}
+
+impl SetupStep {
+    fn as_str(&self) -> &'static str {
+        match self {
+            SetupStep::CheckingDocker => "Checking Docker installation",
+            SetupStep::PullingImage => "Pulling required images",
+            SetupStep::StartingContainer => "Starting container",
+            SetupStep::ConfiguringNetwork => "Configuring network",
+            SetupStep::VerifyingSetup => "Verifying setup",
+        }
+    }
 }
 
 impl App {
@@ -189,6 +223,7 @@ impl App {
             should_cancel_setup: false,  // Initialize the new field
             update_sender: Some(update_sender),
             update_receiver: Some(update_receiver),
+            current_setup_step: None,
         }
     }
 
@@ -387,7 +422,7 @@ impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         // 当 self.exit 为 false 时持续运行
         while !self.exit {
-            // 计算可见区域高度(终端高度减去边框占用的2行)
+            // 计算可���区域高度(终端高度减去边框占用的2行)
             let visible_height = terminal.size()?.height as usize - 2;
             
             // 调用 ui::draw 函数绘制用户界面
@@ -446,18 +481,31 @@ impl App {
                         AppUpdate::DockerStatus(status) => {
                             self.docker_status = Some(status);
                         },
+                        AppUpdate::SetupProgress(step, status) => {
+                            self.current_setup_step = Some(step.clone());
+                            self.setup_state = match status {
+                                SetupStepStatus::Pending => SetupState::NotStarted,
+                                SetupStepStatus::InProgress => SetupState::InProgress,
+                                SetupStepStatus::Complete => SetupState::Complete,
+                                SetupStepStatus::Failed => SetupState::Failed(format!("Step {} failed", step.as_str())),
+                            };
+                        },
                         AppUpdate::SetupComplete => {
                             self.state = AppState::Running;
+                            self.setup_state = SetupState::Complete;
                             self.docker_setup_timer = 0;
                             self.progress1 = 0.0;
                             self.docker_setup_in_progress = false;
+                            self.current_setup_step = None;
                         },
-                        AppUpdate::SetupFailed(error) => {
+                        AppUpdate::SetupFailed(error, step) => {
                             self.docker_status = Some(format!("Error: {}", error));
                             self.state = AppState::Running;
+                            self.setup_state = SetupState::Failed(error);
                             self.docker_setup_timer = 0;
                             self.progress1 = 0.0;
                             self.docker_setup_in_progress = false;
+                            self.current_setup_step = Some(step);
                         }
                     },
                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {},
@@ -831,7 +879,11 @@ impl App {
             Err(e) => {
                 if !self.should_cancel_setup {
                     if let Some(sender) = &self.update_sender {
-                        let _ = sender.send(AppUpdate::SetupFailed(e.to_string())).await;
+                        // 发送失败状态，包含当前步骤
+                        let _ = sender.send(AppUpdate::SetupFailed(
+                            e.to_string(),
+                            self.current_setup_step.clone().unwrap_or(SetupStep::CheckingDocker)
+                        )).await;
                     }
                 }
             }
@@ -852,37 +904,49 @@ impl App {
             Line::from("")
         ];
 
-        // Get progress steps from DockerManager
-        let progress_steps = self.docker_manager.get_setup_progress(self.docker_setup_timer);
-        let all_steps_completed = progress_steps.iter().all(|(_, completed)| *completed);
-        
-        for (step, completed) in progress_steps {
-            let style = if completed {
-                Style::default().fg(Color::Green)
-            } else {
-                Style::default().fg(Color::DarkGray)
+        // 定义所有步骤
+        let all_steps = vec![
+            SetupStep::CheckingDocker,
+            SetupStep::PullingImage,
+            SetupStep::StartingContainer,
+            SetupStep::ConfiguringNetwork,
+            SetupStep::VerifyingSetup,
+        ];
+
+        // 根据当前步骤显示进度
+        for step in all_steps {
+            let (prefix, style) = match &self.current_setup_step {
+                Some(current) => {
+                    if *current == step {
+                        match &self.setup_state {
+                            SetupState::Failed(_) => ("✗", Style::default().fg(Color::Red)),
+                            _ => ("⋯", Style::default().fg(Color::Yellow))
+                        }
+                    } else if *current > step {
+                        ("✓", Style::default().fg(Color::Green))
+                    } else {
+                        ("○", Style::default().fg(Color::DarkGray))
+                    }
+                },
+                None => ("○", Style::default().fg(Color::DarkGray))
             };
-            
-            let prefix = if completed { "✓" } else { "○" };
+
             lines.push(Line::from(Span::styled(
-                format!("{} {}", prefix, step),
+                format!("{} {}", prefix, step.as_str()),
                 style
             )));
         }
 
-        // Add status message if available
+        // 添加状态消息，如果是错误状态则显示为红色
         if let Some(status) = &self.docker_status {
             lines.push(Line::from(""));
-            lines.push(Line::from(status.clone()));
-        }
-
-        // If all steps are completed, show completion message
-        if all_steps_completed {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "✨ Setup completed successfully!",
-                Style::default().fg(Color::Green).bold()
-            )));
+            if let SetupState::Failed(_) = self.setup_state {
+                lines.push(Line::from(
+                    Span::styled(status.clone(), Style::default().fg(Color::Red))
+                ));
+            } else {
+                lines.push(Line::from(status.clone()));
+            }
         }
 
         Text::from(lines)
