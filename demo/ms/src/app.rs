@@ -47,6 +47,7 @@ pub struct App {
     progress_columns: u16,
     pub progress1: f64,
     pub progress_lines: RefCell<Vec<String>>,
+    pub should_cancel_setup: bool,  // Add this new field
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +99,7 @@ impl Clone for App {
             progress_columns: self.progress_columns,
             progress1: self.progress1,
             progress_lines: RefCell::new(Vec::new()),
+            should_cancel_setup: self.should_cancel_setup,  // Clone the new field
         }
     }
 }
@@ -170,6 +172,7 @@ impl App {
             progress_columns: 0,
             progress1: 0.0,
             progress_lines: RefCell::new(Vec::new()),
+            should_cancel_setup: false,  // Initialize the new field
         }
     }
 
@@ -374,6 +377,12 @@ impl App {
             // 调用 ui::draw 函数绘制用户界面
             terminal.draw(|frame| ui::draw(frame, self))?;
             
+            // Update timer if Docker setup is in progress
+            if self.state == AppState::Started {
+                self.docker_setup_timer = self.docker_setup_timer.saturating_add(1);
+                self.update(terminal.size()?.width);
+            }
+
             // 等待事件,超时时间为100毫秒
             if event::poll(Duration::from_millis(100))? {
                 // 如有事件发生
@@ -413,29 +422,25 @@ impl App {
                     }
                 }
             }
-
-            // Update timer if Docker setup is in progress
-            if self.docker_setup_in_progress {
-                self.docker_setup_timer = self.docker_setup_timer.saturating_add(1);
-            }
-
-            self.update(terminal.size()?.width);
         }
         Ok(())
     }
 
     fn update(&mut self, terminal_width: u16) {
-        // 只有在应用程序状态为Started时才更新
-        if self.state != AppState::Started {
+        if self.should_cancel_setup {
+            // Reset everything if cancellation is requested
+            self.progress1 = 0.0;
+            self.docker_setup_timer = 0;
             return;
         }
 
-        // 更新progress1和progress2来展示不同数值类型的进度条效果
-        // progress_columns: 当前进度的列数,每次加1,不超过终端宽度
-        self.progress_columns = (self.progress_columns + 1).clamp(0, terminal_width);
-        // progress1: 使用整数计算百分比(0-100)
-        self.progress1 = f64::from(self.progress_columns) * 100.0 / f64::from(terminal_width);
-
+        let total_duration = 1200;
+        self.progress1 = (self.docker_setup_timer as f64 * 100.0 / total_duration as f64).min(100.0);
+        
+        if self.progress1 >= 100.0 {
+            self.state = AppState::Running;
+            self.docker_setup_timer = 0;
+        }
     }
 
     pub fn render_gauge1(&self, area: Rect, buf: &mut Buffer) {
@@ -624,6 +629,14 @@ impl App {
                     }
                 }
                 KeyCode::Esc => {
+                    if self.state == AppState::Started {
+                        // Cancel the setup process
+                        self.should_cancel_setup = true;
+                        self.state = AppState::Running;
+                        self.docker_setup_timer = 0;
+                        self.progress1 = 0.0;
+                        self.docker_setup_in_progress = false;
+                    }
                     if self.show_tables && self.saved_sql.is_some() {
                         // Clear saved SQL and return to table view
                         self.saved_sql = None;
@@ -681,7 +694,7 @@ impl App {
                 }
                 KeyCode::Char('r') => {
                     self.state = AppState::Started;
-                    println!("{}", self.docker_setup_in_progress);
+                    self.should_cancel_setup = false;  // Reset cancel flag
                     if !self.docker_setup_in_progress {
                         tokio::spawn({
                             let mut app = self.clone();
@@ -751,15 +764,26 @@ impl App {
 
     pub async fn setup_docker(&mut self) {
         self.docker_setup_in_progress = true;
-        self.docker_setup_timer = 0;  // Reset timer when starting setup
+        self.docker_setup_timer = 0;
         self.docker_status = Some("Setting up Docker environment...".to_string());
         
+        // Check for cancellation before proceeding
+        if self.should_cancel_setup {
+            self.docker_setup_in_progress = false;
+            self.docker_status = Some("Setup cancelled".to_string());
+            return;
+        }
+
         match self.docker_manager.setup().await {
             Ok(msg) => {
-                self.docker_status = Some(msg);
+                if !self.should_cancel_setup {
+                    self.docker_status = Some(msg);
+                }
             },
             Err(e) => {
-                self.docker_status = Some(format!("Error: {}", e));
+                if !self.should_cancel_setup {
+                    self.docker_status = Some(format!("Error: {}", e));
+                }
             }
         }
         
