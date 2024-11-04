@@ -48,6 +48,8 @@ pub struct App {
     pub progress1: f64,
     pub progress_lines: RefCell<Vec<String>>,
     pub should_cancel_setup: bool,  // Add this new field
+    pub update_sender: Option<mpsc::Sender<AppUpdate>>,
+    pub update_receiver: Option<mpsc::Receiver<AppUpdate>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +102,8 @@ impl Clone for App {
             progress1: self.progress1,
             progress_lines: RefCell::new(Vec::new()),
             should_cancel_setup: self.should_cancel_setup,  // Clone the new field
+            update_sender: self.update_sender.clone(),
+            update_receiver: None,
         }
     }
 }
@@ -132,9 +136,19 @@ pub struct DataDictionaryItem {
     pub description: String,
 }
 
+// 添加新的状态更新类型
+#[derive(Clone, Debug)]
+pub enum AppUpdate {
+    DockerStatus(String),
+    SetupComplete,
+    SetupFailed(String),
+}
+
 impl App {
     pub async fn new() -> Self {
         let (sql_sender, sql_receiver) = mpsc::channel(32);
+        // 添加新的状态更新通道
+        let (update_sender, update_receiver) = mpsc::channel(32);
         
         let chains = match App::fetch_chains().await {
             Ok(data) => data,
@@ -173,6 +187,8 @@ impl App {
             progress1: 0.0,
             progress_lines: RefCell::new(Vec::new()),
             should_cancel_setup: false,  // Initialize the new field
+            update_sender: Some(update_sender),
+            update_receiver: Some(update_receiver),
         }
     }
 
@@ -419,6 +435,34 @@ impl App {
                             self.sql_executing = false;
                             self.sql_error = Some("Channel closed".to_string());
                         }
+                    }
+                }
+            }
+
+            // 检查状态更新
+            if let Some(receiver) = &mut self.update_receiver {
+                match receiver.try_recv() {
+                    Ok(update) => match update {
+                        AppUpdate::DockerStatus(status) => {
+                            self.docker_status = Some(status);
+                        },
+                        AppUpdate::SetupComplete => {
+                            self.state = AppState::Running;
+                            self.docker_setup_timer = 0;
+                            self.progress1 = 0.0;
+                            self.docker_setup_in_progress = false;
+                        },
+                        AppUpdate::SetupFailed(error) => {
+                            self.docker_status = Some(format!("Error: {}", error));
+                            self.state = AppState::Running;
+                            self.docker_setup_timer = 0;
+                            self.progress1 = 0.0;
+                            self.docker_setup_in_progress = false;
+                        }
+                    },
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {},
+                    Err(_) => {
+                        self.docker_status = Some("Channel closed".to_string());
                     }
                 }
             }
@@ -765,24 +809,30 @@ impl App {
     pub async fn setup_docker(&mut self) {
         self.docker_setup_in_progress = true;
         self.docker_setup_timer = 0;
-        self.docker_status = Some("Setting up Docker environment...".to_string());
         
-        // Check for cancellation before proceeding
-        if self.should_cancel_setup {
-            self.docker_setup_in_progress = false;
-            self.docker_status = Some("Setup cancelled".to_string());
-            return;
+        if let Some(sender) = &self.update_sender {
+            let _ = sender.send(AppUpdate::DockerStatus(
+                "Setting up Docker environment...".to_string()
+            )).await;
         }
-
-        match self.docker_manager.setup().await {
+        
+        // 克隆sender用于Docker管理器
+        let sender = self.update_sender.clone();
+        
+        match self.docker_manager.setup(sender).await {
             Ok(msg) => {
                 if !self.should_cancel_setup {
-                    self.docker_status = Some(msg);
+                    if let Some(sender) = &self.update_sender {
+                        let _ = sender.send(AppUpdate::SetupComplete).await;
+                        let _ = sender.send(AppUpdate::DockerStatus(msg)).await;
+                    }
                 }
             },
             Err(e) => {
                 if !self.should_cancel_setup {
-                    self.docker_status = Some(format!("Error: {}", e));
+                    if let Some(sender) = &self.update_sender {
+                        let _ = sender.send(AppUpdate::SetupFailed(e.to_string())).await;
+                    }
                 }
             }
         }

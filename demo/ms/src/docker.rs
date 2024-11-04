@@ -1,6 +1,8 @@
 use std::process::Command;
 use std::time::Duration;
 use tokio::time::sleep;
+use tokio::sync::mpsc;
+use crate::app::AppUpdate;
 
 #[derive(Debug)]
 pub struct DockerManager {
@@ -14,23 +16,41 @@ impl DockerManager {
         }
     }
 
-    pub async fn setup(&self) -> Result<String, String> {
+    pub async fn setup(&self, sender: Option<mpsc::Sender<AppUpdate>>) -> Result<String, String> {
         // Step 1: Check if docker is installed
         if !self.check_docker_installed() {
             return Err("Docker is not installed or not accessible".to_string());
         }
 
+        if let Some(sender) = &sender {
+            let _ = sender.send(AppUpdate::DockerStatus(
+                "Checking Docker installation...".to_string()
+            )).await;
+        }
+
         // Step 2: Pull the image
-        match self.pull_image().await {
-            Ok(_) => println!("Image pulled successfully"),
-            Err(e) => return Err(format!("Failed to pull image: {}", e)),
+        if let Some(sender) = &sender {
+            let _ = sender.send(AppUpdate::DockerStatus(
+                "Pulling required images...".to_string()
+            )).await;
+        }
+        
+        if let Err(e) = self.pull_image().await {
+            return Err(format!("Failed to pull image: {}", e));
         }
 
         // Step 3: Run the container
-        match self.run_container().await {
-            Ok(_) => Ok("Container started successfully".to_string()),
-            Err(e) => Err(format!("Failed to start container: {}", e)),
+        if let Some(sender) = &sender {
+            let _ = sender.send(AppUpdate::DockerStatus(
+                "Starting container...".to_string()
+            )).await;
         }
+        
+        if let Err(e) = self.run_container().await {
+            return Err(format!("Failed to start container: {}", e));
+        }
+        
+        Ok("Container started successfully".to_string())
     }
 
     fn check_docker_installed(&self) -> bool {
@@ -59,8 +79,8 @@ impl DockerManager {
                 "run",
                 "-d",  // Run in detached mode
                 "--rm",
-                "-p", "8083:8083",
-                "-p", "8081:8081",
+                "-p", "18083:8083",
+                "-p", "18081:8081",
                 &self.image,
             ])
             .output()
