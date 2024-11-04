@@ -1,4 +1,4 @@
-use std::{io, collections::HashMap, time::Duration};
+use std::{io, collections::HashMap, time::Duration, cell::RefCell};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::DefaultTerminal;
 use serde::{Deserialize, Serialize};
@@ -6,8 +6,8 @@ use reqwest;
 use serde_json::json;
 use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::sync::mpsc;
-use ratatui::style::{Style, Color,palette::tailwind};
-use ratatui::text::{Line, Span};
+use ratatui::style::{Style, Color,palette::tailwind, Stylize};
+use ratatui::text::{Line, Span, Text};
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::buffer::Buffer;
 use ratatui::widgets::{Gauge, Widget,block::Title,Block,Borders, Padding, Paragraph};
@@ -45,7 +45,8 @@ pub struct App {
     pub setup_state: SetupState,  // Add this field
     state: AppState,
     progress_columns: u16,
-    progress1: u16,
+    pub progress1: f64,
+    pub progress_lines: RefCell<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -96,6 +97,7 @@ impl Clone for App {
             state: self.state,
             progress_columns: self.progress_columns,
             progress1: self.progress1,
+            progress_lines: RefCell::new(Vec::new()),
         }
     }
 }
@@ -166,7 +168,8 @@ impl App {
             setup_state: SetupState::NotStarted,
             state: AppState::default(),
             progress_columns: 0,
-            progress1: 0,
+            progress1: 0.0,
+            progress_lines: RefCell::new(Vec::new()),
         }
     }
 
@@ -431,15 +434,21 @@ impl App {
         // progress_columns: 当前进度的列数,每次加1,不超过终端宽度
         self.progress_columns = (self.progress_columns + 1).clamp(0, terminal_width);
         // progress1: 使用整数计算百分比(0-100)
-        self.progress1 = self.progress_columns * 100 / terminal_width;
+        self.progress1 = f64::from(self.progress_columns) * 100.0 / f64::from(terminal_width);
+
     }
 
     pub fn render_gauge1(&self, area: Rect, buf: &mut Buffer) {
-        let title = title_block("Gauge with percentage");
+        let title = title_block("Gauge with ratio and custom label");
+        let label = Span::styled(
+            format!("{:.1}/100", self.progress1),
+            Style::new().italic().bold().fg(CUSTOM_LABEL_COLOR),
+        );
         Gauge::default()
             .block(title)
-            .gauge_style(GAUGE1_COLOR)
-            .percent(self.progress1)
+            .gauge_style(GAUGE2_COLOR)
+            .ratio(self.progress1 / 100.0)
+            .label(label)
             .render(area, buf);
     }
 
@@ -663,7 +672,7 @@ impl App {
                     self.current_tab = 1;
                 }
                 KeyCode::Char('e') => {
-                    // 如果有保存的 SQL 并且正在显示表格，允许重新编辑
+                    // 如果保存的 SQL 并且正在显示表格，允许重新编辑
                     if self.show_tables && self.saved_sql.is_some() {
                         self.show_sql_window = true;
                         self.sql_input = self.saved_sql.clone().unwrap_or_default();
@@ -672,6 +681,7 @@ impl App {
                 }
                 KeyCode::Char('r') => {
                     self.state = AppState::Started;
+                    println!("{}", self.docker_setup_in_progress);
                     if !self.docker_setup_in_progress {
                         tokio::spawn({
                             let mut app = self.clone();
@@ -696,48 +706,6 @@ impl App {
             }
         }
         String::new()
-    }
-
-    // Add method to handle SQL execution
-    fn execute_sql(&mut self) {
-        if let Some(sender) = self.sql_sender.clone() {
-            self.sql_executing = true;
-            self.sql_error = None;
-            self.sql_columns.clear();
-            self.sql_data.clear();
-            self.sql_result = Some("Executing query...".to_string());
-
-            // Create HTTP client
-            let client = reqwest::Client::new();
-            
-            // Set up headers
-            let mut headers = HeaderMap::new();
-            headers.insert("X-Trino-User", HeaderValue::from_static("datacloud"));
-            headers.insert("X-Trino-Catalog", HeaderValue::from_static("paimon"));
-            headers.insert("Content-Type", HeaderValue::from_static("text/plain"));
-
-            // Clone necessary data for the async closure
-            let sql_input = self.sql_input.clone();
-
-            // Spawn the async task
-            tokio::spawn(async move {
-                let result = client.post("http://47.236.12.48:9090/v1/statement")
-                    .headers(headers.clone())
-                    .body(sql_input)
-                    .send()
-                    .await;
-
-                let _ = match result {
-                    Ok(resp) => {
-                        match resp.json::<serde_json::Value>().await {
-                            Ok(json) => sender.send(Ok(json)).await,
-                            Err(e) => sender.send(Err(format!("Failed to parse response: {}", e))).await
-                        }
-                    }
-                    Err(e) => sender.send(Err(format!("Request failed: {}", e))).await
-                };
-            });
-        }
     }
 
     // Add a new method to handle SQL response
@@ -799,7 +767,7 @@ impl App {
     }
 
     // Add new method to get formatted setup progress
-    pub fn get_setup_progress_lines(&self) -> Vec<Line> {
+    pub fn get_setup_progress_lines(&self) -> Text {
         let mut lines = vec![
             Line::from(""),
             Line::from(Span::styled(
@@ -811,7 +779,10 @@ impl App {
         ];
 
         // Get progress steps from DockerManager
-        for (step, completed) in self.docker_manager.get_setup_progress(self.docker_setup_timer) {
+        let progress_steps = self.docker_manager.get_setup_progress(self.docker_setup_timer);
+        let all_steps_completed = progress_steps.iter().all(|(_, completed)| *completed);
+        
+        for (step, completed) in progress_steps {
             let style = if completed {
                 Style::default().fg(Color::Green)
             } else {
@@ -831,13 +802,26 @@ impl App {
             lines.push(Line::from(status.clone()));
         }
 
-        println!("Lines: {:?}", lines);
-        lines
+        // If all steps are completed, show completion message
+        if all_steps_completed {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "✨ Setup completed successfully!",
+                Style::default().fg(Color::Green).bold()
+            )));
+        }
+
+        Text::from(lines)
+    }
+
+    pub fn progress1(&self) -> f64 {
+        self.progress1
     }
 }
 
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
+const GAUGE2_COLOR: Color = tailwind::GREEN.c800;
 
 #[derive(Debug, Deserialize)]
 struct Response {
@@ -864,25 +848,11 @@ struct DataDictionary {
     transactionLogs: Vec<DataDictionaryItem>,
 }
 
-fn title_block(title: &str) -> Block {
+pub fn title_block(title: &str) -> Block {
     let title = Title::from(title).alignment(Alignment::Center);
     Block::new()
         .borders(Borders::NONE)
         .padding(Padding::vertical(1))
         .title(title)
         .style(Style::default().fg(CUSTOM_LABEL_COLOR))
-}
-
-impl Widget for &App {
-    #[allow(clippy::similar_names)]
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        use Constraint::{Length, Min, Ratio};
-        let layout = Layout::vertical([Length(2), Min(0), Length(1)]);
-        let [header_area, gauge_area, footer_area] = layout.areas(area);
-
-        let layout = Layout::vertical([Ratio(1, 4); 4]);
-        let [gauge1_area, gauge2_area, gauge3_area, gauge4_area] = layout.areas(gauge_area);
-
-        self.render_gauge1(gauge1_area, buf);
-    }
 }

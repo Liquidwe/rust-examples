@@ -33,15 +33,6 @@ impl DockerManager {
         }
     }
 
-    pub fn get_setup_progress(&self, timer: u64) -> Vec<(String, bool)> {
-        let seconds = timer as f64 / 10.0;
-        vec![
-            ("Checking Docker installation...".to_string(), seconds >= 0.0),
-            ("Pulling required image...".to_string(), seconds >= 2.0),
-            ("Starting container...".to_string(), seconds >= 5.0),
-        ]
-    }
-
     fn check_docker_installed(&self) -> bool {
         Command::new("docker")
             .arg("--version")
@@ -82,6 +73,16 @@ impl DockerManager {
         // Wait for container to be ready (you might want to implement a proper health check)
         sleep(Duration::from_secs(5)).await;
         Ok(())
+    }
+
+    pub fn get_setup_progress(&self, timer: u64) -> Vec<(String, bool)> {
+        vec![
+            ("Checking Docker installation".to_string(), timer >= 10),
+            ("Pulling required images".to_string(), timer >= 30),
+            ("Starting containers".to_string(), timer >= 50),
+            ("Configuring network".to_string(), timer >= 70),
+            ("Verifying setup".to_string(), timer >= 90)
+        ]
     }
 }
 

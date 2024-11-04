@@ -8,6 +8,17 @@ use ratatui::{
 };
 use crate::app::App;
 
+// Add this helper function before the draw function
+fn title_block(title: &str) -> Block<'_> {
+    Block::default()
+        .borders(ratatui::widgets::Borders::ALL)
+        .title(title)
+}
+
+// Also need to define CUSTOM_LABEL_COLOR and GAUGE2_COLOR constants
+const CUSTOM_LABEL_COLOR: Color = Color::White;
+const GAUGE2_COLOR: Style = Style::new().fg(Color::Green);
+
 pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 
 
@@ -356,11 +367,49 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                             .title(" Results ")
                             .title_alignment(Alignment::Center)
                             .border_set(border::THICK);
-
-                        // 替换原来的结果显示，改为渲染gauge1
-                        app.render_gauge1(right_chunks[1], frame.buffer_mut());
-
                         frame.render_widget(results_block, right_chunks[1]);
+
+                        // 将下半部分分成更多份以容纳进度日志
+                        let gauge_chunks = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints([
+                                Constraint::Length(3),   // gauge1占用3行
+                                Constraint::Length(3),   // docker状态占用3行
+                                Constraint::Min(0),      // 剩余空间用于显示进度日志
+                            ])
+                            .split(right_chunks[1]);
+
+                        // 渲染gauge1
+                        let title = title_block("Progress");
+                        let label = Span::styled(
+                            format!("{:.1}/100", app.progress1()),
+                            Style::new().italic().bold().fg(CUSTOM_LABEL_COLOR),
+                        );
+                        let gauge = Gauge::default()
+                            .block(title)
+                            .gauge_style(GAUGE2_COLOR)
+                            .ratio(app.progress1 / 100.0)
+                            .label(label);
+                        frame.render_widget(gauge, gauge_chunks[0]);
+
+                        // 渲染Docker设置状态
+                        let docker_status = if app.docker_setup_in_progress {
+                            format!("Docker setup in progress... ({} seconds)", app.docker_setup_timer / 10)
+                        } else {
+                            "Docker setup not started".to_string()
+                        };
+
+                        let docker_status_widget = Paragraph::new(docker_status)
+                            .alignment(Alignment::Center)
+                            .style(Style::default().fg(Color::Yellow));
+                        frame.render_widget(docker_status_widget, gauge_chunks[1]);
+
+                        // 渲染进度日志
+                        let progress_lines = app.get_setup_progress_lines();
+                        let progress_widget = Paragraph::new(progress_lines)
+                            .alignment(Alignment::Left)
+                            .wrap(ratatui::widgets::Wrap { trim: true });
+                        frame.render_widget(progress_widget, gauge_chunks[2]);
                     } else {
                         // 如果没有保存的SQL,显示原始的数据字典
                         let right_block = Block::bordered()
