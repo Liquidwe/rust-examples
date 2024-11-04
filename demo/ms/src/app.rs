@@ -6,8 +6,14 @@ use reqwest;
 use serde_json::json;
 use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::sync::mpsc;
+use ratatui::style::{Style, Color,palette::tailwind};
+use ratatui::text::{Line, Span};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::buffer::Buffer;
+use ratatui::widgets::{Gauge, Widget,block::Title,Block,Borders, Padding, Paragraph};
 
 use crate::ui;
+use crate::docker::DockerManager;
 
 #[derive(Debug)]
 pub struct App {
@@ -30,6 +36,32 @@ pub struct App {
     pub sql_data: Vec<Vec<serde_json::Value>>,
     sql_sender: Option<mpsc::Sender<Result<serde_json::Value, String>>>,
     sql_receiver: Option<mpsc::Receiver<Result<serde_json::Value, String>>>,
+    pub sql_timer: u64,  // Add this field for the timer
+    pub docker_manager: DockerManager,
+    pub docker_status: Option<String>,
+    pub docker_setup_in_progress: bool,
+    pub docker_setup_timer: u64,  // Add this new field
+    pub setup_progress: f64,  // Add this field
+    pub setup_state: SetupState,  // Add this field
+    state: AppState,
+    progress_columns: u16,
+    progress1: u16,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SetupState {
+    NotStarted,
+    InProgress,
+    Complete,
+    Failed(String),
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum AppState {
+    #[default]
+    Running,
+    Started,
+    Quitting,
 }
 
 impl Clone for App {
@@ -54,6 +86,16 @@ impl Clone for App {
             sql_data: self.sql_data.clone(),
             sql_sender: self.sql_sender.clone(),
             sql_receiver: None,  // Don't clone the receiver
+            sql_timer: self.sql_timer,
+            docker_manager: self.docker_manager.clone(),
+            docker_status: self.docker_status.clone(),
+            docker_setup_in_progress: self.docker_setup_in_progress,
+            docker_setup_timer: self.docker_setup_timer,  // Initialize the timer
+            setup_progress: self.setup_progress,
+            setup_state: self.setup_state.clone(),
+            state: self.state,
+            progress_columns: self.progress_columns,
+            progress1: self.progress1,
         }
     }
 }
@@ -115,6 +157,16 @@ impl App {
             sql_data: Vec::new(),
             sql_sender: Some(sql_sender),
             sql_receiver: Some(sql_receiver),
+            sql_timer: 0,  // Initialize timer
+            docker_manager: DockerManager::new(),
+            docker_status: None,
+            docker_setup_in_progress: false,
+            docker_setup_timer: 0,  // Initialize the timer
+            setup_progress: 0.0,
+            setup_state: SetupState::NotStarted,
+            state: AppState::default(),
+            progress_columns: 0,
+            progress1: 0,
         }
     }
 
@@ -309,7 +361,7 @@ impl App {
         }
     }
 
-    // run 方法是应用程序的主循环
+    // run 方法是用程序的主循环
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         // 当 self.exit 为 false 时持续运行
         while !self.exit {
@@ -321,7 +373,7 @@ impl App {
             
             // 等待事件,超时时间为100毫秒
             if event::poll(Duration::from_millis(100))? {
-                // 如果有事件发生
+                // 如有事件发生
                 if let Event::Key(key_event) = event::read()? {
                     // 只处理按键按下事件
                     if key_event.kind == KeyEventKind::Press {
@@ -358,8 +410,37 @@ impl App {
                     }
                 }
             }
+
+            // Update timer if Docker setup is in progress
+            if self.docker_setup_in_progress {
+                self.docker_setup_timer = self.docker_setup_timer.saturating_add(1);
+            }
+
+            self.update(terminal.size()?.width);
         }
         Ok(())
+    }
+
+    fn update(&mut self, terminal_width: u16) {
+        // 只有在应用程序状态为Started时才更新
+        if self.state != AppState::Started {
+            return;
+        }
+
+        // 更新progress1和progress2来展示不同数值类型的进度条效果
+        // progress_columns: 当前进度的列数,每次加1,不超过终端宽度
+        self.progress_columns = (self.progress_columns + 1).clamp(0, terminal_width);
+        // progress1: 使用整数计算百分比(0-100)
+        self.progress1 = self.progress_columns * 100 / terminal_width;
+    }
+
+    pub fn render_gauge1(&self, area: Rect, buf: &mut Buffer) {
+        let title = title_block("Gauge with percentage");
+        Gauge::default()
+            .block(title)
+            .gauge_style(GAUGE1_COLOR)
+            .percent(self.progress1)
+            .render(area, buf);
     }
 
     pub fn update_example_data(&mut self) {
@@ -590,14 +671,16 @@ impl App {
                     }
                 }
                 KeyCode::Char('r') => {
-                    // Check if we have saved SQL and are in table view
-                    if self.show_tables && self.saved_sql.is_some() && !self.sql_executing {
-                        // Create a blocking runtime and execute SQL
-                        println!("Debug: 1111111111");
-                        self.execute_sql();
-                        println!("Debug: 222222222");
+                    self.state = AppState::Started;
+                    if !self.docker_setup_in_progress {
+                        tokio::spawn({
+                            let mut app = self.clone();
+                            async move {
+                                app.setup_docker().await;
+                            }
+                        });
                     }
-                }
+                },
                 _ => {}
             }
         }
@@ -659,7 +742,6 @@ impl App {
 
     // Add a new method to handle SQL response
     pub fn handle_sql_response(&mut self, json: serde_json::Value) {
-        println!("Debug: 3333333");
 
         if let Some(error) = json.get("error") {
             self.sql_error = Some(error.to_string());
@@ -698,7 +780,64 @@ impl App {
             }
         }
     }
+
+    pub async fn setup_docker(&mut self) {
+        self.docker_setup_in_progress = true;
+        self.docker_setup_timer = 0;  // Reset timer when starting setup
+        self.docker_status = Some("Setting up Docker environment...".to_string());
+        
+        match self.docker_manager.setup().await {
+            Ok(msg) => {
+                self.docker_status = Some(msg);
+            },
+            Err(e) => {
+                self.docker_status = Some(format!("Error: {}", e));
+            }
+        }
+        
+        self.docker_setup_in_progress = false;
+    }
+
+    // Add new method to get formatted setup progress
+    pub fn get_setup_progress_lines(&self) -> Vec<Line> {
+        let mut lines = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                format!("Setting up Docker environment... ({:.1}s)", 
+                    self.docker_setup_timer as f64 / 10.0),
+                Style::default().fg(Color::Yellow)
+            )),
+            Line::from("")
+        ];
+
+        // Get progress steps from DockerManager
+        for (step, completed) in self.docker_manager.get_setup_progress(self.docker_setup_timer) {
+            let style = if completed {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            
+            let prefix = if completed { "✓" } else { "○" };
+            lines.push(Line::from(Span::styled(
+                format!("{} {}", prefix, step),
+                style
+            )));
+        }
+
+        // Add status message if available
+        if let Some(status) = &self.docker_status {
+            lines.push(Line::from(""));
+            lines.push(Line::from(status.clone()));
+        }
+
+        println!("Lines: {:?}", lines);
+        lines
+    }
 }
+
+const GAUGE1_COLOR: Color = tailwind::RED.c800;
+const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
 #[derive(Debug, Deserialize)]
 struct Response {
@@ -723,4 +862,27 @@ struct DataDictionary {
     blocks: Vec<DataDictionaryItem>,
     transactions: Vec<DataDictionaryItem>,
     transactionLogs: Vec<DataDictionaryItem>,
+}
+
+fn title_block(title: &str) -> Block {
+    let title = Title::from(title).alignment(Alignment::Center);
+    Block::new()
+        .borders(Borders::NONE)
+        .padding(Padding::vertical(1))
+        .title(title)
+        .style(Style::default().fg(CUSTOM_LABEL_COLOR))
+}
+
+impl Widget for &App {
+    #[allow(clippy::similar_names)]
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        use Constraint::{Length, Min, Ratio};
+        let layout = Layout::vertical([Length(2), Min(0), Length(1)]);
+        let [header_area, gauge_area, footer_area] = layout.areas(area);
+
+        let layout = Layout::vertical([Ratio(1, 4); 4]);
+        let [gauge1_area, gauge2_area, gauge3_area, gauge4_area] = layout.areas(gauge_area);
+
+        self.render_gauge1(gauge1_area, buf);
+    }
 }

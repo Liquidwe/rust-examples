@@ -4,7 +4,7 @@ use ratatui::{
     style::{Stylize, Color, Style, Modifier},
     symbols::border,
     text::{Line, Text, Span},
-    widgets::{block::{Position, Title}, Block, List, ListItem, Paragraph, Widget, Tabs, Clear},
+    widgets::{block::{Position, Title}, Block, List, ListItem, Paragraph, Widget, Tabs, Clear, Gauge},
 };
 use crate::app::App;
 
@@ -261,7 +261,7 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
 ██║     ███████║███████║██║██╔██╗ ██║██████╔╝███████║███████╗█████╗  
 ██║     ██╔══██║██╔══██║██║██║╚██╗██║██╔══██╗██╔══██║╚════██║██╔══╝  
 ╚██████╗██║  ██║██║  ██║██║██║ ╚████║██████╔╝██║  ██║███████║███████╗
- ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝";
+ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ ╚═╝  ╚═╝╚═══════╝╚══════╝";
 
                     let layout = Layout::default()
                         .direction(Direction::Vertical)
@@ -357,75 +357,10 @@ pub fn draw(frame: &mut ratatui::Frame, app: &App) {
                             .title_alignment(Alignment::Center)
                             .border_set(border::THICK);
 
-                        // 根据不同状态显示不同内容
-                        let results_content = if app.sql_executing {
-                            // 正在执行SQL时显示执行状态
-                            let sql_result_text = app.sql_result.as_ref().unwrap_or(&executing_text);
-                            vec![
-                                Line::from(""),
-                                Line::from(Span::styled("Executing query...", Style::default().fg(Color::Yellow).bold())),
-                                Line::from(Span::styled(
-                                    sql_result_text,
-                                    Style::default().fg(Color::Yellow)
-                                ))
-                            ]
-                        } else if let Some(error) = &app.sql_error {
-                            // 有错误时显示错误信息
-                            vec![
-                                Line::from(""),
-                                Line::from("Error:".red().bold()),
-                                Line::from(error.as_str().red())
-                            ]
-                        } else if !app.sql_data.is_empty() {
-                            // 有查询结果时显示结果数据
-                            let mut lines = Vec::new();
-                            
-                            // 添加状态信息
-                            if let Some(result) = &app.sql_result {
-                                lines.push(Line::from(result.clone().green()));
-                                lines.push(Line::from(""));
-                            }
-                            
-                            // 添加表头
-                            let header = Line::from(
-                                app.sql_columns.iter()
-                                    .map(|col| Span::styled(
-                                        format!("{:<15}", col.name),
-                                        Style::default().add_modifier(Modifier::BOLD)
-                                    ))
-                                    .collect::<Vec<_>>()
-                            );
-                            lines.push(header);
-                            lines.push(Line::from("─".repeat(80)));
+                        // 替换原来的结果显示，改为渲染gauge1
+                        app.render_gauge1(right_chunks[1], frame.buffer_mut());
 
-                            // 添加数据行
-                            for row in &app.sql_data {
-                                lines.push(Line::from(
-                                    row.iter()
-                                        .map(|val| Span::styled(
-                                            format!("{:<15}", val),
-                                            Style::default().fg(Color::White)
-                                        ))
-                                        .collect::<Vec<_>>()
-                                ));
-                            }
-                            lines
-                        } else {
-                            // 默认显示提示信息
-                            vec![
-                                Line::from(""),
-                                Line::from(if let Some(msg) = &app.sql_result {
-                                    msg.clone().yellow()
-                                } else {
-                                    "No results yet. Press 'r' to execute the query.".to_string().yellow()
-                                })
-                            ]
-                        };
-
-                        let results_paragraph = Paragraph::new(results_content)
-                            .block(results_block)
-                            .wrap(ratatui::widgets::Wrap { trim: true });
-                        frame.render_widget(results_paragraph, right_chunks[1]);
+                        frame.render_widget(results_block, right_chunks[1]);
                     } else {
                         // 如果没有保存的SQL,显示原始的数据字典
                         let right_block = Block::bordered()

@@ -3,6 +3,7 @@ use ratatui::DefaultTerminal;
 
 mod app;
 mod ui;
+mod docker;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
