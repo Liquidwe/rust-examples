@@ -43,7 +43,7 @@ pub struct App {
     pub docker_setup_timer: u64,  // Add this new field
     pub setup_progress: f64,  // Add this field
     pub setup_state: SetupState,  // Add this field
-    state: AppState,
+    pub state: AppState,
     progress_columns: u16,
     pub progress1: f64,
     pub progress_lines: RefCell<Vec<String>>,
@@ -58,7 +58,7 @@ pub enum SetupState {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum AppState {
+pub enum AppState {
     #[default]
     Running,
     Started,
